@@ -475,7 +475,7 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
       : "";
   const windowsCommand =
     pairing && installation
-      ? `$p=Join-Path $env:TEMP ('adc-install-'+[guid]::NewGuid().ToString('N')+'.ps1'); Invoke-WebRequest -UseBasicParsing -Uri ${powershellQuote(installation.windowsInstallerUrl)} -OutFile $p; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p -Url ${powershellQuote(installation.controlPlaneUrl)} -DownloadUrl ${powershellQuote(installation.downloadUrl)} -Code ${powershellQuote(pairing.code)}; $ec=$LASTEXITCODE; Remove-Item $p -Force -ErrorAction SilentlyContinue; if($ec -ne 0){throw "ADC installer failed with exit code $ec"}`
+      ? `$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $p=Join-Path $env:TEMP ('adc-install-'+[guid]::NewGuid().ToString('N')+'.ps1'); Invoke-WebRequest -UseBasicParsing -Uri ${powershellQuote(installation.windowsInstallerUrl)} -OutFile $p; & (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $p -Url ${powershellQuote(installation.controlPlaneUrl)} -DownloadUrl ${powershellQuote(installation.downloadUrl)} -Code ${powershellQuote(pairing.code)}; $ec=$LASTEXITCODE; Remove-Item $p -Force -ErrorAction SilentlyContinue; if($null -eq $ec -or $ec -ne 0){throw "ADC installer failed with exit code $ec"}`
       : "";
   const command = installPlatform === "windows" ? windowsCommand : unixCommand;
   const modes: Record<string, Message> = {

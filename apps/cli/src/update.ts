@@ -105,7 +105,13 @@ async function runInstaller(
     temporary = await mkdtemp(resolve(tmpdir(), "adc-update-"));
     const installer = resolve(temporary, "install.ps1");
     await writeFile(installer, script, "utf8");
-    executable = "powershell.exe";
+    executable = resolve(
+      process.env.SystemRoot ?? "C:\\Windows",
+      "System32",
+      "WindowsPowerShell",
+      "v1.0",
+      "powershell.exe"
+    );
     args = [
       "-NoLogo",
       "-NoProfile",

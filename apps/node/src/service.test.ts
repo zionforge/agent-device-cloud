@@ -86,9 +86,11 @@ exit 2
 describe("Windows task startup", () => {
   it("defines a least-privilege logon task with restart behavior", () => {
     const xml = windowsTaskDefinition("C:\\Users\\owner\\ADC & Tools\\node.cmd", "S-1-5-21-1234");
+    expect(xml).toContain('<?xml version="1.0" encoding="UTF-16"?>');
     expect(xml).toContain("<LogonType>InteractiveToken</LogonType>");
     expect(xml).toContain("<RunLevel>LeastPrivilege</RunLevel>");
     expect(xml).toContain("<RestartOnFailure>");
+    expect(xml).toContain("<Interval>PT1M</Interval>");
     expect(xml).toContain("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>");
     expect(xml).toContain("ADC &amp; Tools");
     expect(xml).toContain("<UserId>S-1-5-21-1234</UserId>");

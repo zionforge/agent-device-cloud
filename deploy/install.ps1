@@ -15,6 +15,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
 [Net.ServicePointManager]::SecurityProtocol =
   [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
@@ -235,7 +236,7 @@ try {
   foreach ($Name in @("adc", "adc-node")) {
     $Content = "@echo off`r`n" +
       "REM ADC managed launcher`r`n" +
-      "chcp 65001 >nul`r`n" +
+      "`"%SystemRoot%\System32\chcp.com`" 65001 >nul 2>&1`r`n" +
       "setlocal DisableDelayedExpansion`r`n" +
       "set `"ADC_INSTALL_DIR=$EscapedInstall`"`r`n" +
       "set `"ADC_BIN_DIR=$EscapedBin`"`r`n" +
@@ -264,9 +265,22 @@ try {
 
   Write-Host ""
   Write-Host "Installed: $(Join-Path $BinDir 'adc-node.cmd')"
-  $PathEntries = $env:PATH -split ";"
-  if ($BinDir -notin $PathEntries) {
-    Write-Host "Add this directory to your user PATH: $BinDir"
+  $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ([string]::IsNullOrEmpty($UserPath)) { $UserPath = "" }
+  $UserEntries = @($UserPath -split ";" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+  if ($UserEntries -notcontains $BinDir) {
+    try {
+      [Environment]::SetEnvironmentVariable("Path", (($UserEntries + $BinDir) -join ";"), "User")
+      Add-Type -Namespace AdcNative -Name PathBroadcast -MemberDefinition @"
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+"@
+      $BroadcastResult = [UIntPtr]::Zero
+      [AdcNative.PathBroadcast]::SendMessageTimeout([IntPtr]0xFFFF, 0x1A, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$BroadcastResult) | Out-Null
+      Write-Host "Added to user PATH: $BinDir (open a new terminal for adc / adc-node)"
+    } catch {
+      Write-Host "Add this directory to your user PATH: $BinDir"
+    }
   }
   Write-Host "Status: & '$(Join-Path $BinDir 'adc-node.cmd')' status"
 } finally {

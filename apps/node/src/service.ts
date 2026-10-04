@@ -37,6 +37,23 @@ const serviceFile = resolve(
 );
 const windowsRunner = resolve(serviceDirectory, `${suffix}.cmd`);
 const domain = process.platform === "darwin" ? `gui/${process.getuid!()}` : "";
+/**
+ * Windows PowerShell lives under %SystemRoot%\System32\WindowsPowerShell\v1.0,
+ * which is NOT part of the CreateProcess default search order. Bare
+ * "powershell.exe" only resolves through PATH, so machines with a stripped or
+ * broken PATH fail to register the scheduled task (verified on a real zh-CN
+ * Windows host). Always spawn the absolute path instead.
+ */
+const powershellExecutable =
+  process.platform === "win32"
+    ? resolve(
+        process.env.SystemRoot ?? "C:\\Windows",
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe"
+      )
+    : "powershell.exe";
 
 function xml(value: string): string {
   return value
@@ -106,7 +123,7 @@ async function windowsTaskRegistered(): Promise<boolean> {
 }
 
 async function windowsTaskState(): Promise<string> {
-  const result = await command("powershell.exe", [
+  const result = await command(powershellExecutable, [
     "-NoLogo",
     "-NoProfile",
     "-NonInteractive",
@@ -117,7 +134,7 @@ async function windowsTaskState(): Promise<string> {
 }
 
 export function windowsTaskDefinition(runner: string, userId: string): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo><Description>Agent Device Cloud device connector</Description></RegistrationInfo>
   <Triggers><LogonTrigger><Enabled>true</Enabled><UserId>${xml(userId)}</UserId></LogonTrigger></Triggers>
@@ -145,7 +162,7 @@ export function windowsTaskDefinition(runner: string, userId: string): string {
     <WakeToRun>false</WakeToRun>
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
-    <RestartOnFailure><Interval>PT10S</Interval><Count>999</Count></RestartOnFailure>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
   </Settings>
   <Actions Context="Author">
     <Exec>
@@ -211,7 +228,7 @@ async function launchdLoaded(): Promise<boolean> {
 export async function stopService(): Promise<void> {
   if (process.platform === "win32") {
     if (!(await windowsTaskRegistered())) return;
-    await command("powershell.exe", [
+    await command(powershellExecutable, [
       "-NoLogo",
       "-NoProfile",
       "-NonInteractive",
@@ -263,7 +280,7 @@ export async function installService(): Promise<void> {
   if (process.platform === "win32") {
     await stopService();
     const userId = (
-      await command("powershell.exe", [
+      await command(powershellExecutable, [
         "-NoLogo",
         "-NoProfile",
         "-NonInteractive",
@@ -273,10 +290,14 @@ export async function installService(): Promise<void> {
     ).stdout.trim();
     await writeFile(
       windowsRunner,
-      `@echo off\r\ncall ${cmdString(launcher)} run >> ${cmdString(resolve(logDirectory, "node.log"))} 2>&1\r\n`,
+      `@echo off\r\n"%SystemRoot%\\System32\\chcp.com" 65001 >nul 2>&1\r\ncall ${cmdString(launcher)} run >> ${cmdString(resolve(logDirectory, "node.log"))} 2>&1\r\n`,
       "utf8"
     );
-    await writeFile(serviceFile, windowsTaskDefinition(windowsRunner, userId), "utf8");
+    await writeFile(
+      serviceFile,
+      "\ufeff" + windowsTaskDefinition(windowsRunner, userId),
+      "utf16le"
+    );
     await command("schtasks.exe", ["/Create", "/TN", taskName, "/XML", serviceFile, "/F"]);
   } else {
     const environment: Record<string, string> = {
@@ -414,7 +435,7 @@ export async function uninstall(): Promise<void> {
       )
       .join("; ");
     const cleanup = spawn(
-      "powershell.exe",
+      powershellExecutable,
       [
         "-NoLogo",
         "-NoProfile",

@@ -463,7 +463,7 @@ export async function runManagementCommand(input: {
           ...(flags.has("read-only") ? ["-ReadOnly"] : []),
           ...(flags.has("no-service") ? ["-NoService"] : [])
         ].join(" ");
-        installCommand = `$p=Join-Path $env:TEMP ('adc-install-'+[guid]::NewGuid().ToString('N')+'.ps1'); Invoke-WebRequest -UseBasicParsing -Uri ${powershellQuote(installation.windowsInstallerUrl)} -OutFile $p; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p ${windowsArgs}; $ec=$LASTEXITCODE; Remove-Item $p -Force -ErrorAction SilentlyContinue; if($ec -ne 0){throw "ADC installer failed with exit code $ec"}`;
+        installCommand = `$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $p=Join-Path $env:TEMP ('adc-install-'+[guid]::NewGuid().ToString('N')+'.ps1'); Invoke-WebRequest -UseBasicParsing -Uri ${powershellQuote(installation.windowsInstallerUrl)} -OutFile $p; & (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $p ${windowsArgs}; $ec=$LASTEXITCODE; Remove-Item $p -Force -ErrorAction SilentlyContinue; if($null -eq $ec -or $ec -ne 0){throw "ADC installer failed with exit code $ec"}`;
       } else if (!windows && installation.available && installation.installerUrl) {
         installCommand = `curl -fsSL ${shellQuote(installation.installerUrl)} | sh -s -- ${setupArgs}`;
       } else {

@@ -772,9 +772,10 @@ function Connector() {
   --url https://devices.example.com --code 'PAIRING_CODE'`}
       </CodeBlock>
       <CodeBlock label="Windows PowerShell">
-        {`$p=Join-Path $env:TEMP 'adc-install.ps1'
+        {`[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+$p=Join-Path $env:TEMP 'adc-install.ps1'
 Invoke-WebRequest -UseBasicParsing -Uri 'https://devices.example.com/install.ps1' -OutFile $p
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $p \`
+& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $p \\\`
   -Url 'https://devices.example.com' -Code 'PAIRING_CODE'`}
       </CodeBlock>
       <Section id="pairing-sequence" title={copy("What pairing creates", "配对会创建什么")}>
