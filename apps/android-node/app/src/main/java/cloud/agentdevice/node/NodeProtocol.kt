@@ -166,17 +166,22 @@ class NodeProtocol(
                     separator = ",",
                     prefix = "{",
                     postfix = "}"
-                ) { key -> "${JSONObject.quote(key)}:${canonicalJson(value.get(key))}" }
+                ) { key -> "${canonicalString(key)}:${canonicalJson(value.get(key))}" }
                 is JSONArray -> (0 until value.length()).joinToString(
                     separator = ",",
                     prefix = "[",
                     postfix = "]"
                 ) { index -> canonicalJson(value.get(index)) }
-                is String -> JSONObject.quote(value)
+                is String -> canonicalString(value)
                 is Number -> canonicalNumber(value)
                 is Boolean -> value.toString()
-                else -> JSONObject.quote(value.toString())
+                else -> canonicalString(value.toString())
             }
+
+        internal fun canonicalString(value: String): String =
+            JSONObject.quote(value)
+                .replace("\\u2028", "\u2028")
+                .replace("\\u2029", "\u2029")
 
         internal fun canonicalNumber(value: Number): String {
             val number = value.toString().toDouble()

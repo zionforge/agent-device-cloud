@@ -46,6 +46,14 @@ class NodeProtocolTest {
     }
 
     @Test
+    fun canonicalStringsMatchJavaScriptJsonStringifyForLineSeparators() {
+        assertEquals(
+            "\"before\u2028middle\u2029after\"",
+            NodeProtocol.canonicalString("before\u2028middle\u2029after")
+        )
+    }
+
+    @Test
     fun requestPayloadMatchesTheFiveLineNodeProofContract() {
         val body = JSONObject().put("claim", true).put("activeTaskCount", 0)
         val payload = NodeProtocol.requestPayload(

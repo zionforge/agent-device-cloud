@@ -436,6 +436,9 @@ class MainActivity : AppCompatActivity() {
     ): MaterialSwitch =
         MaterialSwitch(this).apply {
             text = label
+            showText = false
+            textOn = ""
+            textOff = ""
             isChecked = store.isCapabilityEnabled(group)
             setOnCheckedChangeListener { _, checked ->
                 if (bindingSwitches) return@setOnCheckedChangeListener

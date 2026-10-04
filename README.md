@@ -29,8 +29,10 @@ analytics and release process are defined in [growth and operations](docs/growth
 Self-hosted installations send no analytics by default.
 
 The native Android source, build instructions, current capabilities and Xiaomi/HyperOS limitations
-are documented in [apps/android-node](apps/android-node/README.md). It is an MVP awaiting physical
-device certification and is not included in the hosted Connector downloads.
+are documented in [apps/android-node](apps/android-node/README.md). The
+[Android capability matrix](docs/android-capability-matrix.md) separates ordinary App APIs,
+user-confirmed and special-access flows, and managed-device-only operations. The Mobile Node has
+physical Xiaomi/MIUI validation but is not included in the hosted Connector downloads.
 
 ## Hosted preview
 

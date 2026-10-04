@@ -21,6 +21,11 @@ The Node always advertises its installed capability descriptors. A capability wh
 permission or runtime condition is missing is marked unavailable and is excluded from dispatch by
 the Control Plane. New capabilities are not added to an existing Agent grant automatically.
 
+The broader Android surface, including Bluetooth, NFC, Wi-Fi, hotspot, display controls, media,
+sensors and managed-device-only operations, is classified in the
+[Android capability matrix](../../docs/android-capability-matrix.md). A local switch cannot turn a
+privileged Android operation into an ordinary App capability.
+
 ## Build
 
 Use JDK 17 and Android SDK Platform 35:
@@ -84,6 +89,7 @@ navigation. Password field contents are redacted from snapshots.
   reported as `unknown_outcome`, not repeated automatically. The latest 256 records are retained;
   forgetting the pairing removes them and the Android Keystore identity.
 
-This is source-level and protocol compatibility, not a claim of compatibility with every Android or
-Xiaomi model. Release qualification must record Android version, MIUI/HyperOS version, permission
-behavior, lock-screen behavior, battery policy and reconnect results for each tested device.
+The current build has been exercised on a physical Xiaomi 22041216C running Android 13 / MIUI 14,
+but this is not a claim of compatibility with every Android or Xiaomi model. Release qualification
+must record Android version, MIUI/HyperOS version, permission behavior, lock-screen behavior,
+battery policy and reconnect results for each tested device.
