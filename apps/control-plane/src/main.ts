@@ -59,6 +59,7 @@ const mailer = process.env.ADC_SMTP_URL
       socketTimeout: 30_000
     })
   : undefined;
+if (mailer) await mailer.verify();
 const authentication = createAuthentication({
   pool: store.pool,
   baseURL: publicURL,

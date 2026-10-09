@@ -49,9 +49,10 @@ three attempts per source address in ten minutes and include `Retry-After` on HT
 
 The SMTP transport limits connection and greeting waits to 10 seconds and message transfer to 30
 seconds. A send succeeds only when the SMTP server reports at least one accepted recipient and no
-rejected recipient. Provider acceptance is not final inbox delivery: monitor delivery, bounce and
-complaint records at the SMTP provider and complete a real inbox round trip after configuration or
-sender-domain changes.
+rejected recipient. Configured SMTP credentials are verified during Control Plane startup, so an
+invalid transport does not produce a healthy service that silently loses verification mail.
+Provider acceptance is not final inbox delivery: monitor delivery, bounce and complaint records at
+the SMTP provider and complete a real inbox round trip after configuration or sender-domain changes.
 
 ## GitHub and website
 
