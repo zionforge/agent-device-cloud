@@ -124,14 +124,14 @@
 The hosted preview at `https://adc.47-101-150-8.nip.io:8443` runs the same application under systemd
 with an isolated PostgreSQL database and Caddy TLS routing. Public health, static assets, OAuth
 metadata, account registration, authenticated session persistence across an application restart,
-and all four downloadable Connector archives have been verified against that deployment.
+email verification, password recovery and all four downloadable Connector archives have been
+verified against that deployment. The email round trip covers real DirectMail delivery, verification
+auto-sign-in, password reset, old-session revocation and login with the new password.
 
 Compose configuration and Dockerfile are provided, but container image startup is not yet included
-in the deployment verification above. SMTP delivery must be verified with the installation's actual
-provider. GitHub tests simulate the provider's HTTP endpoints and use real
-authentication/PostgreSQL; real GitHub consent requires the deployment's OAuth App credentials and
-callback configuration. The hosted preview leaves password recovery, email verification and GitHub
-login disabled until those integrations are supplied.
+in the deployment verification above. GitHub tests simulate provider HTTP endpoints and use real
+authentication/PostgreSQL; the hosted preview also has a configured OAuth App, but a real GitHub
+consent round trip still requires an interactive provider session.
 
 The current sandbox rejects `launchctl` execution with EACCES, so the actual macOS service-manager
 test is opt-in (`ADC_TEST_LAUNCHD=1`) and was not passed here. macOS x64, Linux arm64/x64 and
