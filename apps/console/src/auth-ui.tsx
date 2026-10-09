@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { Cable, Github, LoaderCircle } from "lucide-react";
+import { Cable, Github, LoaderCircle, MailCheck, RotateCw } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { analyticsEventForRequest, trackAnalytics } from "./analytics.tsx";
 import { LanguageSelector, translateError, useI18n, type Message } from "./i18n.tsx";
@@ -10,12 +10,52 @@ export interface User {
   name: string;
   email: string;
 }
+interface ApiRequestError extends Error {
+  status: number;
+  code?: string;
+  rawMessage: string;
+}
 interface AuthConfig {
   registrationEnabled: boolean;
   passwordResetEnabled: boolean;
   requireEmailVerification: boolean;
   githubEnabled: boolean;
 }
+const VERIFICATION_RESEND_SECONDS = 60;
+
+export function maskEmail(email: string) {
+  const separator = email.lastIndexOf("@");
+  if (separator < 1) return email;
+  const local = email.slice(0, separator);
+  const domain = email.slice(separator + 1);
+  if (!domain) return email;
+  if (local.length === 1) return `*@${domain}`;
+  if (local.length === 2) return `${local[0]}*@${domain}`;
+  return `${local[0]}***${local.at(-1)}@${domain}`;
+}
+
+export function isApiErrorCode(error: unknown, code: string) {
+  return error instanceof Error && "code" in error && (error as ApiRequestError).code === code;
+}
+
+export function authQueryError(
+  error: string | null,
+  verification: boolean,
+  mode: "login" | "register" | "forgot" | "reset"
+): Message | undefined {
+  if (!error) return undefined;
+  if (error === "signup_disabled")
+    return "New account registration is disabled. Existing users can still sign in.";
+  if (
+    verification &&
+    ["TOKEN_EXPIRED", "INVALID_TOKEN", "USER_NOT_FOUND", "INVALID_USER"].includes(error)
+  )
+    return "This verification link is invalid or expired. Sign in to request a new one.";
+  return mode === "login"
+    ? "GitHub sign-in could not finish. Verify your GitHub email and try again. Existing email accounts can link GitHub from Account."
+    : "This link is invalid or expired. Please try again.";
+}
+
 export async function apiRequest(path: string, init: RequestInit = {}) {
   const response = await fetch(path, {
     ...init,
@@ -24,12 +64,14 @@ export async function apiRequest(path: string, init: RequestInit = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(
-      translateError(
-        body.error?.message ?? body.message ?? body.error_description ?? `HTTP ${response.status}`
-      )
-    );
-    Object.assign(error, { status: response.status });
+    const rawMessage =
+      body.error?.message ?? body.message ?? body.error_description ?? `HTTP ${response.status}`;
+    const error = new Error(translateError(rawMessage));
+    Object.assign(error, {
+      status: response.status,
+      code: body.error?.code ?? body.code,
+      rawMessage
+    });
     throw error;
   }
   const analyticsEvent = analyticsEventForRequest(path, init.method);
@@ -148,7 +190,7 @@ export function AuthPage({
     ? `?${location.search
         .slice(1)
         .split("&")
-        .filter((part) => !/^(error|error_description)=/.test(part))
+        .filter((part) => !/^(error|error_description|verification)=/.test(part))
         .join("&")}`
     : "";
   const requestedReturnTo = params.get("return_to");
@@ -172,6 +214,10 @@ export function AuthPage({
   const [busy, setBusy] = useState(false);
   const [githubPending, setGithubPending] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resetEmail, setResetEmail] = useState("");
+  const [passwordResetComplete, setPasswordResetComplete] = useState(false);
   useEffect(() => {
     apiRequest("/api/v1/auth/config")
       .then(setConfig)
@@ -182,8 +228,25 @@ export function AuthPage({
     setNotice(undefined);
     setGithubPending(false);
     setVerificationEmail("");
+    setVerificationSent(false);
+    setResendCooldown(0);
+    setResetEmail("");
+    setPasswordResetComplete(false);
   }, [location.pathname]);
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setInterval(
+      () => setResendCooldown((seconds) => Math.max(0, seconds - 1)),
+      1_000
+    );
+    return () => window.clearInterval(timer);
+  }, [resendCooldown > 0]);
   const callbackURL = `${window.location.origin}${oauth ? `/login${oauthSearch}` : (returnTo ?? "/app")}`;
+  const verificationCallbackURL = `${window.location.origin}${
+    oauth
+      ? `/login${oauthSearch}&verification=1`
+      : `/login?verification=1${returnTo ? `&return_to=${encodeURIComponent(returnTo)}` : ""}`
+  }`;
   const continueOAuth = async (created = false) => {
     const result = await apiRequest("/api/auth/oauth2/continue", {
       method: "POST",
@@ -234,7 +297,9 @@ export function AuthPage({
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const email = String(data.get("email") ?? "");
+    const email = String(data.get("email") ?? "")
+      .trim()
+      .toLowerCase();
     const password = String(data.get("password") ?? "");
     setNotice(undefined);
     await action(async () => {
@@ -243,7 +308,7 @@ export function AuthPage({
           method: "POST",
           body: JSON.stringify({ email, redirectTo: `${window.location.origin}/reset-password` })
         });
-        setNotice("If this address has an account, a password reset link is on its way.");
+        setResetEmail(email);
       } else if (mode === "reset") {
         if (!params.get("token"))
           throw new Error(t("This reset link is missing its token. Request a new link."));
@@ -251,7 +316,7 @@ export function AuthPage({
           method: "POST",
           body: JSON.stringify({ token: params.get("token"), newPassword: password })
         });
-        setNotice("Your password has been reset. Sign in with your new password.");
+        setPasswordResetComplete(true);
       } else {
         try {
           await apiRequest(
@@ -261,18 +326,31 @@ export function AuthPage({
               body: JSON.stringify({
                 email,
                 password,
-                callbackURL,
-                ...(mode === "register" ? { name: data.get("name") } : {})
+                callbackURL:
+                  mode === "register" && config?.requireEmailVerification
+                    ? verificationCallbackURL
+                    : callbackURL,
+                ...(mode === "register" ? { name: String(data.get("name") ?? "").trim() } : {})
               })
             }
           );
         } catch (error) {
-          if (config?.requireEmailVerification && mode === "login") setVerificationEmail(email);
+          if (
+            config?.requireEmailVerification &&
+            mode === "login" &&
+            isApiErrorCode(error, "EMAIL_NOT_VERIFIED")
+          ) {
+            setVerificationEmail(email);
+            setVerificationSent(false);
+            setResendCooldown(0);
+            return;
+          }
           throw error;
         }
         if (mode === "register" && config?.requireEmailVerification) {
           setVerificationEmail(email);
-          setNotice("Check your email to verify your address and finish signing in.");
+          setVerificationSent(true);
+          setResendCooldown(VERIFICATION_RESEND_SECONDS);
         } else if (oauth) await continueOAuth(mode === "register");
         else await onLogin(returnTo);
       }
@@ -294,6 +372,36 @@ export function AuthPage({
     forgot: "Send reset link",
     reset: "Save password"
   };
+  const queryError = authQueryError(params.get("error"), params.has("verification"), mode);
+  const invalidResetLink = mode === "reset" && (!params.get("token") || !!queryError);
+  const completed =
+    !!verificationEmail || !!resetEmail || passwordResetComplete || invalidResetLink;
+  const pageTitle: Message = verificationEmail
+    ? "Verify your email"
+    : resetEmail
+      ? "Check your email"
+      : passwordResetComplete
+        ? "Password updated"
+        : invalidResetLink
+          ? "Reset link expired"
+          : title[mode];
+  const description = verificationEmail
+    ? verificationSent
+      ? t("We sent a verification link to {email}. Open it to verify your address and sign in.", {
+          email: maskEmail(verificationEmail)
+        })
+      : t("{email} has not been verified. Request a new verification email to continue.", {
+          email: maskEmail(verificationEmail)
+        })
+    : resetEmail
+      ? t("If an account exists for {email}, a password reset link is on its way.", {
+          email: maskEmail(resetEmail)
+        })
+      : passwordResetComplete
+        ? t("You can now sign in with your new password.")
+        : invalidResetLink
+          ? t("Request a new password reset link to continue.")
+          : t("Your devices, connected to your agents.");
   return (
     <AuthLayout>
       {githubPending ? (
@@ -302,17 +410,11 @@ export function AuthPage({
           <span>{t("Connecting to GitHub…")}</span>
         </div>
       ) : null}
-      <h1>{t(title[mode])}</h1>
-      <p className="description">{t("Your devices, connected to your agents.")}</p>
-      {params.has("error") ? (
+      <h1>{t(pageTitle)}</h1>
+      <p className="description">{description}</p>
+      {queryError ? (
         <p className="form-error" role="alert">
-          {t(
-            params.get("error") === "signup_disabled"
-              ? "New account registration is disabled. Existing users can still sign in."
-              : mode === "login"
-                ? "GitHub sign-in could not finish. Verify your GitHub email and try again. Existing email accounts can link GitHub from Account."
-                : "This link is invalid or expired. Please try again."
-          )}
+          {t(queryError)}
         </p>
       ) : null}
       {error ? (
@@ -328,7 +430,97 @@ export function AuthPage({
       {config && disabled ? (
         <p className="description">{t("This option is disabled on this installation.")}</p>
       ) : null}
-      {currentUser && oauth ? (
+      {verificationEmail ? (
+        <div className="auth-completion">
+          <MailCheck
+            className="auth-completion-icon"
+            size={28}
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+          <p className="hint">
+            {t("Check your spam folder if the message does not arrive within a few minutes.")}
+          </p>
+          <button
+            className="secondary"
+            disabled={busy || resendCooldown > 0}
+            onClick={() =>
+              action(async () => {
+                await apiRequest("/api/auth/send-verification-email", {
+                  method: "POST",
+                  body: JSON.stringify({
+                    email: verificationEmail,
+                    callbackURL: verificationCallbackURL
+                  })
+                });
+                setVerificationSent(true);
+                setResendCooldown(VERIFICATION_RESEND_SECONDS);
+                setNotice("A new verification email was sent.");
+              })
+            }
+          >
+            {busy ? (
+              <LoaderCircle className="button-spinner" size={17} aria-hidden="true" />
+            ) : (
+              <RotateCw size={17} aria-hidden="true" />
+            )}
+            {t(
+              busy
+                ? "Please wait…"
+                : resendCooldown > 0
+                  ? "Resend in {seconds}s"
+                  : "Resend verification email",
+              { seconds: resendCooldown }
+            )}
+          </button>
+          <button
+            className="text-link"
+            type="button"
+            onClick={() => {
+              setVerificationEmail("");
+              setVerificationSent(false);
+              setResendCooldown(0);
+              setNotice(undefined);
+              setError("");
+            }}
+          >
+            {t(mode === "register" ? "Use a different email" : "Back to sign in")}
+          </button>
+        </div>
+      ) : resetEmail ? (
+        <div className="auth-completion">
+          <MailCheck
+            className="auth-completion-icon"
+            size={28}
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+          <p className="hint">
+            {t("Check your spam folder if the message does not arrive within a few minutes.")}
+          </p>
+          <button className="text-link" type="button" onClick={() => setResetEmail("")}>
+            {t("Try another email")}
+          </button>
+          <Link className="secondary" to={`/login${oauthSearch}`}>
+            {t("Back to sign in")}
+          </Link>
+        </div>
+      ) : passwordResetComplete ? (
+        <div className="auth-completion">
+          <Link className="primary" to={`/login${oauthSearch}`}>
+            {t("Sign in")}
+          </Link>
+        </div>
+      ) : invalidResetLink ? (
+        <div className="auth-completion">
+          <Link className="primary" to="/forgot-password">
+            {t("Request a new reset link")}
+          </Link>
+          <Link className="text-link" to={`/login${oauthSearch}`}>
+            {t("Back to sign in")}
+          </Link>
+        </div>
+      ) : currentUser && oauth ? (
         <button className="primary" disabled={busy} onClick={() => action(() => continueOAuth())}>
           {t("Continue as {name}", { name: currentUser.name })}
         </button>
@@ -389,32 +581,17 @@ export function AuthPage({
           </form>
         </>
       )}
-      {verificationEmail ? (
-        <button
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            action(async () => {
-              await apiRequest("/api/auth/send-verification-email", {
-                method: "POST",
-                body: JSON.stringify({ email: verificationEmail, callbackURL })
-              });
-              setNotice("Verification email requested. Check your inbox.");
-            })
-          }
-        >
-          {t("Resend verification email")}
-        </button>
+      {!completed ? (
+        <div className="auth-links">
+          {mode !== "login" ? <Link to={`/login${oauthSearch}`}>{t("Sign in")}</Link> : null}
+          {mode === "login" && config?.registrationEnabled ? (
+            <Link to={`/register${oauthSearch}`}>{t("Create account")}</Link>
+          ) : null}
+          {mode === "login" && config?.passwordResetEnabled ? (
+            <Link to="/forgot-password">{t("Forgot password?")}</Link>
+          ) : null}
+        </div>
       ) : null}
-      <div className="auth-links">
-        {mode !== "login" ? <Link to={`/login${oauthSearch}`}>{t("Sign in")}</Link> : null}
-        {mode === "login" && config?.registrationEnabled ? (
-          <Link to={`/register${oauthSearch}`}>{t("Create account")}</Link>
-        ) : null}
-        {mode === "login" && config?.passwordResetEnabled ? (
-          <Link to="/forgot-password">{t("Forgot password?")}</Link>
-        ) : null}
-      </div>
     </AuthLayout>
   );
 }

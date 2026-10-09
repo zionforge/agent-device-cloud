@@ -117,6 +117,19 @@ describe("public signup and CLI authentication over HTTP", () => {
     });
     expect(signup.response.status, JSON.stringify(signup.body)).toBe(200);
     expect(signup.response.headers.getSetCookie().join("")).not.toContain("adc.session_token");
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const resent = await post("/api/auth/send-verification-email", {
+        email,
+        callbackURL: `${origin}/login?verification=1`
+      });
+      expect(resent.response.status, JSON.stringify(resent.body)).toBe(200);
+    }
+    const limitedResend = await post("/api/auth/send-verification-email", {
+      email,
+      callbackURL: `${origin}/login?verification=1`
+    });
+    expect(limitedResend.response.status).toBe(429);
+    expect(Number(limitedResend.response.headers.get("retry-after"))).toBeGreaterThan(500);
     const unverified = await command(
       ["auth", "login", "--url", origin, "--email", email, "--password-stdin", "--json"],
       `${password}\n`
@@ -124,9 +137,27 @@ describe("public signup and CLI authentication over HTTP", () => {
     expect(unverified.code).not.toBe(0);
     expect(unverified.stderr).not.toContain(password);
     const verificationURL = mails.findLast((mail) => mail.to === email)!.text.match(/http\S+/)![0];
+    expect(mails.findLast((mail) => mail.to === email)!.text).toContain(
+      "This link expires in 1 hour."
+    );
+    const invalidCallback = new URL(`${origin}/api/auth/verify-email`);
+    invalidCallback.searchParams.set("token", "invalid-token");
+    invalidCallback.searchParams.set("callbackURL", `${origin}/login?verification=1`);
+    const invalidVerification = await fetch(invalidCallback, { redirect: "manual" });
+    expect(invalidVerification.status).toBe(302);
+    expect(invalidVerification.headers.get("location")).toContain("verification=1");
+    expect(invalidVerification.headers.get("location")).toContain("error=INVALID_TOKEN");
     const verification = await fetch(verificationURL, { redirect: "manual" });
     expect(verification.status).toBe(302);
     expect(new URL(verification.headers.get("location")!, origin).pathname).toBe("/login");
+    const verificationCookie = verification.headers
+      .getSetCookie()
+      .map((value) => value.split(";")[0])
+      .join("; ");
+    expect(verificationCookie).toContain("adc.session_token");
+    expect(
+      (await fetch(`${origin}/api/v1/me`, { headers: { cookie: verificationCookie } })).status
+    ).toBe(200);
     const browser = await post("/api/auth/sign-in/email", { email, password });
     expect(browser.response.status, JSON.stringify(browser.body)).toBe(200);
     const browserCookie = browser.response.headers

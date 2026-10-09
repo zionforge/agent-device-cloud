@@ -692,15 +692,31 @@ export const zh = {
   "Send reset link": "发送重置链接",
   "Save password": "保存密码",
   "Resend verification email": "重新发送验证邮件",
+  "Resend in {seconds}s": "{seconds} 秒后可重新发送",
   "Forgot password?": "忘记密码？",
-  "If this address has an account, a password reset link is on its way.":
-    "如果此邮箱已注册，密码重置链接将发送到你的邮箱。",
+  "Verify your email": "验证你的邮箱",
+  "Check your email": "查看你的邮箱",
+  "Password updated": "密码已更新",
+  "Reset link expired": "重置链接已失效",
+  "Request a new password reset link to continue.": "请重新申请密码重置链接后继续。",
+  "Request a new reset link": "重新申请重置链接",
+  "We sent a verification link to {email}. Open it to verify your address and sign in.":
+    "验证链接已发送至 {email}。打开链接验证邮箱后即可登录。",
+  "{email} has not been verified. Request a new verification email to continue.":
+    "{email} 尚未验证，请重新发送验证邮件后继续。",
+  "If an account exists for {email}, a password reset link is on its way.":
+    "如果 {email} 已注册，密码重置链接将发送到该邮箱。",
+  "You can now sign in with your new password.": "现在可以使用新密码登录。",
+  "Check your spam folder if the message does not arrive within a few minutes.":
+    "如果几分钟内没有收到邮件，请检查垃圾邮件目录。",
+  "A new verification email was sent.": "新的验证邮件已发送。",
+  "Use a different email": "使用其他邮箱",
+  "Back to sign in": "返回登录",
+  "Try another email": "尝试其他邮箱",
   "This reset link is missing its token. Request a new link.": "重置链接不完整，请重新申请。",
-  "Your password has been reset. Sign in with your new password.": "密码已重置，请使用新密码登录。",
-  "Check your email to verify your address and finish signing in.":
-    "请查看邮箱，验证邮箱地址后完成登录。",
-  "Verification email requested. Check your inbox.": "已申请发送验证邮件，请查看收件箱。",
   "This link is invalid or expired. Please try again.": "此链接无效或已过期，请重试。",
+  "This verification link is invalid or expired. Sign in to request a new one.":
+    "此验证链接无效或已过期。请登录并重新发送验证邮件。",
   "GitHub sign-in could not finish. Verify your GitHub email and try again. Existing email accounts can link GitHub from Account.":
     "GitHub 登录未完成。请确认 GitHub 邮箱已验证后重试；已有邮箱账户可先登录，再前往「账户」关联 GitHub。",
   "This option is disabled on this installation.": "此站点暂未开放这项功能。",

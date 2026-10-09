@@ -159,12 +159,20 @@ describe("persistent account identity and authorization", () => {
       )
     });
     expect((await request("/api/v1/me", undefined, { cookie })).statusCode).toBe(200);
+    const mailCount = mails.length;
+    const unknownReset = await request("/api/auth/request-password-reset", {
+      email: `unknown-${randomBytes(5).toString("hex")}@example.com`,
+      redirectTo: `${origin}/reset-password`
+    });
+    expect(unknownReset.statusCode, unknownReset.body).toBe(200);
+    expect(mails).toHaveLength(mailCount);
     const reset = await request("/api/auth/request-password-reset", {
       email: user.email,
       redirectTo: `${origin}/reset-password`
     });
     expect(reset.statusCode, reset.body).toBe(200);
     const mail = mails.findLast((entry) => entry.to === user.email)!;
+    expect(mail.text).toContain("This link expires in 1 hour.");
     const link = mail.text.match(/http\S+/)?.[0];
     expect(link).toBeTruthy();
     const token = new URL(link!).pathname.split("/").at(-1)!;

@@ -527,6 +527,34 @@ details {
   margin: 24px 0 0;
   font-size: 12px;
 }
+.auth-completion {
+  display: grid;
+  justify-items: stretch;
+  gap: 14px;
+  text-align: center;
+}
+.auth-completion-icon {
+  margin: 0 auto 4px;
+  color: var(--ink);
+}
+.auth-completion .hint {
+  margin: 0 0 6px;
+}
+.auth-completion .primary,
+.auth-completion .secondary {
+  width: 100%;
+  min-height: 48px;
+}
+.auth-completion button.text-link {
+  justify-self: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.auth-completion button.text-link:hover {
+  color: var(--muted);
+}
 .consent {
   width: min(550px, calc(100% - 40px));
 }

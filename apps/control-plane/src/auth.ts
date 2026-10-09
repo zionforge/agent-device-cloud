@@ -113,6 +113,7 @@ export function createAuthentication(options: AuthenticationOptions) {
       maxPasswordLength: 128,
       disableSignUp: options.registrationEnabled === false,
       requireEmailVerification: options.requireEmailVerification ?? false,
+      resetPasswordTokenExpiresIn: 60 * 60,
       revokeSessionsOnPasswordReset: true,
       ...(options.sendMail
         ? {
@@ -120,7 +121,13 @@ export function createAuthentication(options: AuthenticationOptions) {
               await options.sendMail!({
                 to: user.email,
                 subject: "Reset your Agent Device Cloud password",
-                text: `Reset your password using this link:\n${url}\n\nIgnore this email if you did not request it.`
+                text: [
+                  "Reset your Agent Device Cloud password using this link:",
+                  url,
+                  "",
+                  "This link expires in 1 hour.",
+                  "If you did not request a password reset, you can ignore this email."
+                ].join("\n")
               });
             }
           }
@@ -129,6 +136,7 @@ export function createAuthentication(options: AuthenticationOptions) {
     emailVerification: {
       sendOnSignUp: options.requireEmailVerification ?? false,
       autoSignInAfterVerification: true,
+      expiresIn: 60 * 60,
       ...(options.sendMail
         ? {
             sendVerificationEmail: async ({
@@ -141,7 +149,13 @@ export function createAuthentication(options: AuthenticationOptions) {
               await options.sendMail!({
                 to: user.email,
                 subject: "Verify your Agent Device Cloud email",
-                text: `Verify your email address:\n${url}`
+                text: [
+                  "Verify your email to finish creating your Agent Device Cloud account:",
+                  url,
+                  "",
+                  "This link expires in 1 hour.",
+                  "If you did not create this account, you can ignore this email."
+                ].join("\n")
               });
             }
           }
@@ -175,7 +189,8 @@ export function createAuthentication(options: AuthenticationOptions) {
       customRules: {
         "/sign-in/email": { window: 60, max: 10 },
         "/sign-up/email": { window: 60, max: 5 },
-        "/request-password-reset": { window: 60, max: 3 }
+        "/request-password-reset": { window: 10 * 60, max: 3 },
+        "/send-verification-email": { window: 10 * 60, max: 3 }
       }
     },
     advanced: {
@@ -295,7 +310,16 @@ export function createAuthentication(options: AuthenticationOptions) {
           }
         }
       }
-      return oauthClient.run(clientId ?? "", () => auth.handler(request));
+      const response = await oauthClient.run(clientId ?? "", () => auth.handler(request));
+      const retryAfter = response.headers.get("x-retry-after");
+      if (!retryAfter || response.headers.has("retry-after")) return response;
+      const headers = new Headers(response.headers);
+      headers.set("retry-after", retryAfter);
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      });
     },
     async revokeOAuthTokens(userId: string, clientId: string) {
       const { adapter } = await auth.$context;

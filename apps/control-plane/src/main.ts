@@ -52,7 +52,12 @@ if (analyticsDomain && !/^[a-z0-9.-]{1,253}$/i.test(analyticsDomain)) {
 }
 const store = new PostgresStore(databaseURL);
 const mailer = process.env.ADC_SMTP_URL
-  ? nodemailer.createTransport(process.env.ADC_SMTP_URL)
+  ? nodemailer.createTransport({
+      url: process.env.ADC_SMTP_URL,
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000
+    })
   : undefined;
 const authentication = createAuthentication({
   pool: store.pool,
@@ -72,10 +77,13 @@ const authentication = createAuthentication({
   ...(mailer
     ? {
         sendMail: async (mail) => {
-          await mailer.sendMail({
+          const result = await mailer.sendMail({
             ...mail,
             from: process.env.ADC_SMTP_FROM ?? "Agent Device Cloud <no-reply@localhost>"
           });
+          if (!result.accepted.length || result.rejected.length) {
+            throw new Error("The SMTP server did not accept the message.");
+          }
         }
       }
     : {})

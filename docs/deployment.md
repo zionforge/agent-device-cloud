@@ -34,6 +34,25 @@ Public signup creates isolated personal accounts. It does not create a site-wide
 For a private installation, create the intended accounts and then disable registration. SMTP must
 work before enabling mandatory verification. Password reset stays disabled when no transport is set.
 
+## Email verification and recovery
+
+When verification is required, email signup sends a one-hour verification link and creates no
+session until that link is opened. Verification signs the user in and resumes the requested console,
+CLI or OAuth flow. The console shows the masked destination address, waits 60 seconds before
+offering another message and exposes resend only after a confirmed `EMAIL_NOT_VERIFIED` response.
+Invalid and expired callbacks return to a recoverable login state instead of an application page.
+
+Password-reset links also expire after one hour. A successful reset revokes existing sessions before
+the new password can be used. Requests for unknown and registered addresses deliberately return the
+same response and only the latter sends mail. Password-reset and verification-resend endpoints allow
+three attempts per source address in ten minutes and include `Retry-After` on HTTP 429 responses.
+
+The SMTP transport limits connection and greeting waits to 10 seconds and message transfer to 30
+seconds. A send succeeds only when the SMTP server reports at least one accepted recipient and no
+rejected recipient. Provider acceptance is not final inbox delivery: monitor delivery, bounce and
+complaint records at the SMTP provider and complete a real inbox round trip after configuration or
+sender-domain changes.
+
 ## GitHub and website
 
 `/` serves the public landing page, `/docs` the public documentation center, `/login` the shared
