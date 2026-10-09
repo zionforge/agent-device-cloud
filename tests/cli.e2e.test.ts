@@ -169,7 +169,13 @@ describe("public signup and CLI authentication over HTTP", () => {
     expect(pair.code, pair.stderr).toBe(0);
     expect(JSON.parse(pair.stdout)).toMatchObject({
       schemaVersion: "0.1",
-      installCommand: expect.stringContaining("--label 'CLI Mac'")
+      installCommand: expect.stringContaining("--label 'CLI Mac'"),
+      target: {
+        platform: expect.any(String),
+        installerShell: expect.any(String),
+        platformSource: "cli_host_default"
+      },
+      warnings: [expect.stringContaining("No --platform was provided")]
     });
     const windowsPair = await command([
       "device",
@@ -185,7 +191,13 @@ describe("public signup and CLI authentication over HTTP", () => {
     expect(windowsInstall).toMatchObject({
       schemaVersion: "0.1",
       platform: "windows",
-      installCommand: expect.stringContaining("Invoke-WebRequest")
+      installCommand: expect.stringContaining("Invoke-WebRequest"),
+      target: {
+        platform: "windows",
+        installerShell: "powershell",
+        platformSource: "explicit"
+      },
+      warnings: []
     });
     expect(windowsInstall.installCommand).toContain("install.ps1");
     expect(windowsInstall.installCommand).not.toContain("curl");
@@ -344,6 +356,13 @@ describe("public signup and CLI authentication over HTTP", () => {
         required: ["args", "target"]
       }
     });
+    expect(JSON.parse(readTool.stdout).targets).toEqual([
+      expect.objectContaining({
+        nodeId: paired.nodeId,
+        label: "CLI Mac",
+        platform: "darwin"
+      })
+    ]);
     const pendingInvocation = await command([
       "invoke",
       "file.read",

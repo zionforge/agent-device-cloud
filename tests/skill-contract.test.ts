@@ -39,5 +39,7 @@ describe("official Agent Device Cloud Skill", () => {
     expect(skill).toContain("adc invocation status <invocationId> --json");
     expect(skill).toContain("Never run `adc approval approve`");
     expect(skill).toContain("unknown_outcome");
+    expect(skill).toContain("PowerShell syntax only on");
+    expect(skill).toContain("Never send a command written for one dialect to another");
   });
 });

@@ -43,7 +43,7 @@ import {
   syncDirectory,
   type LocalRoot
 } from "./path-security.ts";
-import { shellInvocation, terminateProcessTree } from "./process.ts";
+import { normalizeShellOutput, shellInvocation, terminateProcessTree } from "./process.ts";
 import { ReceiptLedger } from "./receipt-ledger.ts";
 
 export interface CommandTemplate {
@@ -127,6 +127,61 @@ function statusForError(error: ProtocolError): InvocationResult["status"] {
   if (error.code === ErrorCodes.CANCELLED) return "cancelled";
   if (error.code === ErrorCodes.UNKNOWN_OUTCOME) return "unknown_outcome";
   return "failed";
+}
+
+function processExecutionError(
+  invocation: Invocation,
+  output: Record<string, unknown>
+): ProtocolError {
+  if (
+    !Object.prototype.hasOwnProperty.call(output, "exitCode") &&
+    !Object.prototype.hasOwnProperty.call(output, "timedOut") &&
+    !Object.prototype.hasOwnProperty.call(output, "outputLimitExceeded")
+  ) {
+    return new ProtocolError(ErrorCodes.EXECUTION_FAILED, "local tool execution failed.", false, {
+      stage: "execution",
+      tool: invocation.tool
+    });
+  }
+  const executor = process.platform === "win32" ? "PowerShell" : "Bash";
+  const exitCode = typeof output.exitCode === "number" ? output.exitCode : null;
+  const timedOut = output.timedOut === true;
+  const outputLimitExceeded = output.outputLimitExceeded === true;
+  const signal = typeof output.signal === "string" ? output.signal : null;
+  const stderr = typeof output.stderr === "string" ? output.stderr.trim() : "";
+  const stderrSummary = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean)
+    ?.slice(0, 500);
+  const invocationArgs = invocation.args as Record<string, unknown>;
+  const timeoutMs =
+    invocation.tool === "shell.exec" && typeof invocationArgs.timeoutMs === "number"
+      ? invocationArgs.timeoutMs
+      : undefined;
+  const failureKind = timedOut
+    ? "timeout"
+    : outputLimitExceeded
+      ? "output_limit"
+      : exitCode === 127
+        ? "command_not_found"
+        : "process_exit";
+  const message = timedOut
+    ? `${executor} command timed out${timeoutMs ? ` after ${timeoutMs} ms` : ""}.`
+    : outputLimitExceeded
+      ? `${executor} command exceeded the output limit.`
+      : `${executor} exited with code ${exitCode ?? "unknown"}${stderrSummary ? `: ${stderrSummary}` : "."}`;
+  return new ProtocolError(ErrorCodes.EXECUTION_FAILED, message, false, {
+    stage: "execution",
+    platform: process.platform,
+    executor: executor.toLowerCase(),
+    failureKind,
+    exitCode,
+    timedOut,
+    signal,
+    ...(timeoutMs ? { timeoutMs } : {}),
+    ...(stderrSummary ? { stderrSummary } : {})
+  });
 }
 
 export class ToolRuntime {
@@ -282,11 +337,7 @@ export class ToolRuntime {
       assertInvocationCurrent(invocation, this.now());
       execution = await this.executeTool(invocation, signal);
       if (!execution.succeeded) {
-        executionError = new ProtocolError(
-          ErrorCodes.EXECUTION_FAILED,
-          "tool process returned a non-zero exit status",
-          false
-        );
+        executionError = processExecutionError(invocation, execution.output);
       }
     } catch (error) {
       executionError = signal?.aborted
@@ -876,8 +927,10 @@ export class ToolRuntime {
       throw new ProtocolError(ErrorCodes.CANCELLED, "invocation was cancelled", false);
     }
 
-    const fullStdout = this.redactOutput(Buffer.concat(stdout).toString("utf8"));
-    const fullStderr = this.redactOutput(Buffer.concat(stderr).toString("utf8"));
+    const rawStdout = Buffer.concat(stdout).toString("utf8");
+    const rawStderr = Buffer.concat(stderr).toString("utf8");
+    const fullStdout = this.redactOutput(normalizeShellOutput(rawStdout));
+    const fullStderr = this.redactOutput(normalizeShellOutput(rawStderr));
     const combinedBytes = Buffer.byteLength(fullStdout) + Buffer.byteLength(fullStderr);
     const artifactRefs: string[] = [];
     if (combinedBytes > this.outputLimitBytes) {

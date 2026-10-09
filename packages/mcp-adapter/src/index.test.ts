@@ -145,6 +145,44 @@ describe("McpInvocationAdapter", () => {
     }
   });
 
+  it("describes the concrete shell dialect for every target device", async () => {
+    const server = createMcpServer({
+      client: {
+        invoke: async () => {
+          throw new Error("not called");
+        }
+      },
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: ["node_linux", "node_windows"],
+        nodes: [
+          { nodeId: "node_linux", label: "Build host", platform: "linux" },
+          { nodeId: "node_windows", label: "Home PC", platform: "win32" }
+        ],
+        toolNodeIds: { "shell.exec": ["node_windows", "node_linux"] },
+        rootIds: []
+      },
+      allowedTools: ["shell.exec"]
+    });
+    const client = new Client({ name: "shell-platform-test", version: "0.1.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const shell = (await client.listTools()).tools[0]!;
+      expect(shell.description).toContain("Build host (linux: Bash)");
+      expect(shell.description).toContain("Home PC (win32: Windows PowerShell)");
+      expect(
+        ((shell.inputSchema.properties!.target as any).properties.nodeId as any).description
+      ).toContain("node_windows (Home PC; platform: win32; shell: Windows PowerShell)");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("rejects a device that does not advertise the selected tool before dispatch", async () => {
     const adapter = new McpInvocationAdapter({
       client: {

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { AdcClient, AdcClientError, buildInvocation } from "@adc/client";
 import { createMcpServer, projectToolDefinitions } from "@adc/mcp-adapter";
-import { ToolIdSchema, isSideEffectTool, type InvocationResult } from "@adc/protocol";
+import { ToolIdSchema, isSideEffectTool, type InvocationResult, type ToolId } from "@adc/protocol";
 import {
   authStatus,
   importToken,
@@ -234,7 +234,23 @@ async function main(): Promise<void> {
       if (!selector) throw new Error("tool name is required");
       const tool = tools.find((candidate) => candidate.name === selector);
       if (!tool) throw new Error(`Tool is not available: ${selector}`);
-      print({ schemaVersion: "0.1", tool }, json);
+      const targetIds = new Set(me.context.toolNodeIds?.[selector as ToolId] ?? []);
+      const targets = (me.context.nodes ?? [])
+        .filter((node) => targetIds.has(node.nodeId))
+        .map((node) => ({
+          nodeId: node.nodeId,
+          label: node.label,
+          platform: node.platform,
+          ...(selector === "shell.exec"
+            ? {
+                executor: {
+                  kind: "shell",
+                  dialect: node.platform === "win32" ? "powershell" : "bash"
+                }
+              }
+            : {})
+        }));
+      print({ schemaVersion: "0.1", tool, targets }, json);
       return;
     }
     print({ schemaVersion: "0.1", tools }, json);

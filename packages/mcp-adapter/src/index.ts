@@ -50,6 +50,25 @@ function nodeIdsForTool(context: InvocationContext, tool: ToolId): string[] | un
   return [...new Set(advertised.filter((nodeId) => granted.has(nodeId)))].sort();
 }
 
+function shellExecutor(platform: string): string {
+  return platform === "win32"
+    ? "Windows PowerShell"
+    : platform === "darwin" || platform === "linux"
+      ? "Bash"
+      : "native platform runtime";
+}
+
+function targetDescription(context: InvocationContext, tool: ToolId, nodeIds: string[]): string {
+  const nodes = new Map((context.nodes ?? []).map((node) => [node.nodeId, node]));
+  const targets = nodeIds.map((nodeId) => {
+    const node = nodes.get(nodeId);
+    if (!node) return nodeId;
+    const executor = tool === "shell.exec" ? `; shell: ${shellExecutor(node.platform)}` : "";
+    return `${nodeId} (${node.label}; platform: ${node.platform}${executor})`;
+  });
+  return `Choose a device that advertises ${tool}. Available targets: ${targets.join(", ")}.`;
+}
+
 function targetJsonSchema(
   context: InvocationContext,
   tool: ToolId
@@ -104,7 +123,7 @@ function targetJsonSchema(
       nodeId: {
         type: "string",
         enum: nodeIds,
-        description: `Choose a device that advertises ${tool}.`
+        description: targetDescription(context, tool, nodeIds)
       }
     },
     required: ["nodeId"],
@@ -156,7 +175,7 @@ function toolDefinition(
   return {
     name: tool,
     ...(capability?.title ? { title: capability.title } : {}),
-    description: builtin ? descriptionFor(tool) : capability?.description,
+    description: builtin ? descriptionFor(tool, context) : capability?.description,
     inputSchema: inputJsonSchema(argsSchema, targetSchema, sideEffect, targetRequired),
     annotations: {
       readOnlyHint: !sideEffect,
@@ -294,7 +313,7 @@ export function createMcpServer(options: McpAdapterOptions): Server {
   return server;
 }
 
-function descriptionFor(tool: ToolName): string {
+function descriptionFor(tool: ToolName, context?: InvocationContext): string {
   const descriptions: Record<ToolName, string> = {
     "device.list": "List devices visible to the current agent grant.",
     "device.status": "Get the current state of one visible device.",
@@ -323,5 +342,12 @@ function descriptionFor(tool: ToolName): string {
     "task.result": "Read the terminal result of an invocation.",
     "task.cancel": "Request cancellation of an asynchronous invocation."
   };
-  return descriptions[tool];
+  if (tool !== "shell.exec" || !context) return descriptions[tool];
+  const targetIds = new Set(nodeIdsForTool(context, tool) ?? []);
+  const executors = (context.nodes ?? [])
+    .filter((node) => targetIds.has(node.nodeId))
+    .map((node) => `${node.label} (${node.platform}: ${shellExecutor(node.platform)})`);
+  return executors.length
+    ? `${descriptions[tool]} Target executors: ${executors.join(", ")}. Use syntax for the selected target's shell.`
+    : descriptions[tool];
 }

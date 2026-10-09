@@ -322,6 +322,66 @@ describe("ToolRuntime", () => {
     });
   });
 
+  it("returns actionable process failure and timeout diagnostics", async () => {
+    const { runtime } = await fixture();
+    const failed = await runtime.execute(
+      invocation(
+        "shell.exec",
+        {
+          rootId: "root_workspace",
+          cwd: "",
+          command: "printf 'broken command' >&2; exit 7",
+          timeoutMs: 1000
+        },
+        { key: "failed-shell" }
+      ),
+      allowed
+    );
+    expect(failed).toMatchObject({
+      status: "failed",
+      error: {
+        code: "execution_failed",
+        message: "Bash exited with code 7: broken command",
+        retryable: false,
+        details: {
+          stage: "execution",
+          platform: process.platform,
+          executor: "bash",
+          failureKind: "process_exit",
+          exitCode: 7,
+          timedOut: false,
+          stderrSummary: "broken command"
+        }
+      }
+    });
+
+    const timedOut = await runtime.execute(
+      invocation(
+        "shell.exec",
+        {
+          rootId: "root_workspace",
+          cwd: "",
+          command: "sleep 2",
+          timeoutMs: 100
+        },
+        { key: "timed-out-shell" }
+      ),
+      allowed
+    );
+    expect(timedOut).toMatchObject({
+      status: "failed",
+      error: {
+        message: "Bash command timed out after 100 ms.",
+        details: {
+          stage: "execution",
+          failureKind: "timeout",
+          timedOut: true,
+          timeoutMs: 100
+        }
+      }
+    });
+  });
+
   it("truncates large shell output and stores an opaque artifact reference", async () => {
     const { runtime } = await fixture();
     const result = await runtime.execute(

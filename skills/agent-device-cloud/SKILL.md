@@ -31,10 +31,10 @@ account-management or local Connector request.
    token.
 2. Run `adc node list --json`. Use only an active, online device and an absolute POSIX path listed
    in that device's authorized roots. If several devices qualify and the user did not select one,
-   show the candidates and ask.
+   show the candidates and ask. Record the selected device's `platform`.
 3. Run `adc tool list --json`, then `adc tool show <tool-id> --json` before the first use of a tool
-   in the workflow. Use its current `inputSchema`; do not guess arguments or invoke an unavailable
-   tool.
+   in the workflow. Use its current `inputSchema` and target metadata; do not guess arguments or
+   invoke an unavailable tool.
 4. Re-run device and tool discovery after a reconnect, scope change, Connector update, or
    capability error.
 
@@ -44,13 +44,15 @@ Read [tool-invocation.md](references/tool-invocation.md) before invoking a devic
 
 1. Prefer `file.list` or `file.search`, then `file.read`, before changing a file.
 2. Prefer `file.edit`, `file.patch`, or an approved command template over `shell.exec`.
-3. Pass `--node <node-id>` whenever more than one device is authorized or the user named a target.
+3. For `shell.exec`, use Bash syntax only on `darwin`/`linux` targets and PowerShell syntax only on
+   `win32` targets. Never send a command written for one dialect to another.
+4. Pass `--node <node-id>` whenever more than one device is authorized or the user named a target.
    Absolute paths always bind to one device.
-4. Add `--source skill` to every invocation.
-5. Give every side effect a unique workflow-scoped `--idempotency-key` of at least eight
+5. Add `--source skill` to every invocation.
+6. Give every side effect a unique workflow-scoped `--idempotency-key` of at least eight
    characters. Persist it with the task. Reuse it only for the exact same tool, target, arguments,
    and user intent; changed input requires a new key.
-6. Capture `invocationId`, `jobId`, status, error and receipt from JSON output. Never infer success
+7. Capture `invocationId`, `jobId`, status, error and receipt from JSON output. Never infer success
    from exit code alone.
 
 ## Follow The State Machine

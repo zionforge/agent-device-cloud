@@ -24,6 +24,13 @@ export interface InvocationContext {
   grantId: string;
   projectId?: string;
   nodeIds?: string[];
+  nodes?: Array<{
+    nodeId: string;
+    label: string;
+    description?: string;
+    platform: NodePlatform;
+    lastSeenAt?: string;
+  }>;
   allowedTools?: ToolId[];
   toolNodeIds?: Partial<Record<ToolId, string[]>>;
   toolDefinitions?: Partial<Record<ToolId, ToolCapability>>;

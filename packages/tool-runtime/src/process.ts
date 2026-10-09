@@ -6,20 +6,63 @@ export interface ShellInvocation {
   detached: boolean;
 }
 
+function decodeCliXmlText(value: string): string {
+  return value
+    .replace(/_x([0-9a-f]{4})_/gi, (_, encoded: string) =>
+      String.fromCharCode(Number.parseInt(encoded, 16))
+    )
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&apos;", "'")
+    .replaceAll("&amp;", "&");
+}
+
+export function normalizeShellOutput(
+  value: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (
+    platform !== "win32" ||
+    (!value.includes("#< CLIXML") &&
+      !value.includes('xmlns="http://schemas.microsoft.com/powershell/2004/04"'))
+  ) {
+    return value;
+  }
+  const marker = value.indexOf("#< CLIXML");
+  const plain = marker >= 0 ? value.slice(0, marker).trim() : "";
+  const messages = [...value.matchAll(/<S(?:\s+S="[^"]+")?>([\s\S]*?)<\/S>/g)]
+    .map((match) =>
+      decodeCliXmlText(match[1] ?? "")
+        .replace(/\r\n?/g, "\n")
+        .trim()
+    )
+    .filter(Boolean);
+  return [...new Set([plain, ...messages].filter(Boolean))].join("\n");
+}
+
 export function shellInvocation(
   command: string,
   platform: NodeJS.Platform = process.platform
 ): ShellInvocation {
   if (platform === "win32") {
+    const encodedCommand = Buffer.from(command, "utf8").toString("base64");
     const script = `[Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Console]::OutputEncoding
+$ProgressPreference = 'SilentlyContinue'
+$ErrorView = 'NormalView'
 $global:LASTEXITCODE = $null
-& {
-${command}
+try {
+  $adcCommand = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedCommand}'))
+  $adcScript = [ScriptBlock]::Create($adcCommand)
+  & $adcScript
+  $adcSucceeded = $?
+  $adcExitCode = $LASTEXITCODE
+} catch {
+  [Console]::Error.WriteLine($_.Exception.Message)
+  exit 1
 }
-$adcSucceeded = $?
-$adcExitCode = $LASTEXITCODE
 if ($null -ne $adcExitCode) { exit $adcExitCode }
 if (-not $adcSucceeded) { exit 1 }
 `;
@@ -31,6 +74,8 @@ if (-not $adcSucceeded) { exit 1 }
         "-NonInteractive",
         "-ExecutionPolicy",
         "Bypass",
+        "-OutputFormat",
+        "Text",
         "-EncodedCommand",
         Buffer.from(script, "utf16le").toString("base64")
       ],

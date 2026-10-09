@@ -420,8 +420,9 @@ export async function runManagementCommand(input: {
         positiveInteger(stringFlag(flags, "ttl"), 600, "ttl")
       );
       const installation = await client.nodeInstallation();
+      const requestedPlatform = stringFlag(flags, "platform");
       const platform = (
-        stringFlag(flags, "platform") ?? (process.platform === "win32" ? "windows" : "unix")
+        requestedPlatform ?? (process.platform === "win32" ? "windows" : "unix")
       ).toLowerCase();
       if (!["unix", "macos", "linux", "windows", "win32", "wsl"].includes(platform))
         throw new Error("--platform must be unix, windows or wsl");
@@ -470,7 +471,28 @@ export async function runManagementCommand(input: {
       }
       return {
         handled: true,
-        value: { schemaVersion: "0.1", platform, expiresAt: pairing.expiresAt, installCommand }
+        value: {
+          schemaVersion: "0.1",
+          platform,
+          expiresAt: pairing.expiresAt,
+          installCommand,
+          target: {
+            platform,
+            installerShell: windows ? "powershell" : "sh",
+            platformSource: requestedPlatform ? "explicit" : "cli_host_default"
+          },
+          warnings: requestedPlatform
+            ? []
+            : [
+                "No --platform was provided. The install command defaults to the CLI host platform; specify the target device platform when they differ."
+              ],
+          verification: {
+            wait: stringFlag(flags, "name")
+              ? ["adc", "device", "wait", stringFlag(flags, "name")!, "--json"]
+              : undefined,
+            list: ["adc", "device", "list", "--json"]
+          }
+        }
       };
     }
     if (action === "list") {

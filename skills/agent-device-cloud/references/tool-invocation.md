@@ -60,6 +60,21 @@ Optional fields may be omitted. Do not send undocumented fields because tool arg
 Use `--args @/absolute/input.json` when shell quoting would make a large JSON value unsafe or
 ambiguous, and remove temporary inputs that contain sensitive data.
 
+## Platform-Aware Execution
+
+Use `adc node list --json` and the `targets` returned by
+`adc tool show shell.exec --json` before composing a shell command:
+
+- `darwin` and `linux` targets execute Bash.
+- `win32` targets execute Windows PowerShell.
+- Do not send Bash pipelines, quoting or environment syntax to PowerShell, or PowerShell syntax to
+  Bash.
+- A failed process result includes `error.details.executor`, `exitCode`, `timedOut` and a normalized
+  `stderrSummary`. Do not retry when `error.retryable` is false; correct the command or report the
+  failure.
+
+Prefer a configured command template whenever the same operation must work across platforms.
+
 ## Read Before Mutation
 
 List or search before reading:
