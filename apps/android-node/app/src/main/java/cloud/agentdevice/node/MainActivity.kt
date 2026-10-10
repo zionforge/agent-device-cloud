@@ -440,6 +440,8 @@ class MainActivity : AppCompatActivity() {
             showText = false
             textOn = ""
             textOff = ""
+            isClickable = true
+            isFocusable = true
             isChecked = store.isCapabilityEnabled(group)
             setOnCheckedChangeListener { _, checked ->
                 if (bindingSwitches) return@setOnCheckedChangeListener
