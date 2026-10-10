@@ -8,11 +8,21 @@ authorization and receipt path used by desktop Nodes without exposing a shell or
 | Capability           | Local requirement                                     |
 | -------------------- | ----------------------------------------------------- |
 | `device.battery.get` | None                                                  |
+| `device.info.get`    | None                                                  |
 | `device.network.get` | Android network-state access                          |
+| `device.storage.get` | None                                                  |
+| `device.vibrate`     | Device with vibration hardware                        |
+| `app.open`           | Installed app with a launcher activity                |
+| `display.status`     | None                                                  |
+| `audio.status`       | None                                                  |
+| `audio.volume.set`   | None                                                  |
+| `flashlight.status`  | Camera permission and camera flash hardware           |
+| `flashlight.set`     | Camera permission and camera flash hardware           |
 | `location.get`       | Location permission, location enabled and App visible |
 | `notification.show`  | Notification permission on Android 13 and later       |
 | `screen.capture`     | Local capability switch and MediaProjection consent   |
 | `ui.inspect`         | Local capability switch and Accessibility service     |
+| `ui.wait`            | Local capability switch and Accessibility service     |
 | `ui.action`          | Local capability switch and Accessibility service     |
 | `ui.gesture`         | Local capability switch and Accessibility service     |
 | `device.navigation`  | Local capability switch and Accessibility service     |
@@ -70,9 +80,15 @@ screen-share session is active. PNG bytes are uploaded as an opaque Artifact ref
 deployments must configure the external content-addressed asset directory.
 
 UI inspection and control use an Android Accessibility service that the device owner must enable in
-system settings. The Node supports bounded semantic snapshots, selector-based click/long-click/
-focus/scroll/text actions, coordinate tap/swipe gestures and Back/Home/Recents/system-shade
-navigation. Password field contents are redacted from snapshots.
+system settings. Snapshots include display/window metadata, versioned snapshot IDs, node
+references, semantic roles and state. The Node supports waiting for UI/app/idle conditions,
+selector-based click/long-click/focus/scroll/set/clear text actions with before/after verification,
+coordinate tap/swipe gestures and Back/Home/Recents/system-shade navigation. Password field
+contents are redacted from snapshots.
+
+The Android native provider exposes app launch, device/build/storage/display/audio status, bounded
+volume and vibration controls, and flashlight status/control. These capabilities use Android public
+APIs and share the Device status local switch; flashlight access also requires camera permission.
 
 ## Security boundary
 

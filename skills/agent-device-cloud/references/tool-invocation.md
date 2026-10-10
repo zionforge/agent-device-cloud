@@ -34,12 +34,22 @@ The live schema is authoritative. These examples show the protocol 0.1 shapes:
 | `device.list`           | `{}`                                                                                          |
 | `device.status`         | `{"nodeId":"node_example"}`                                                                   |
 | `device.battery.get`    | `{}`                                                                                          |
+| `device.info.get`       | `{}`                                                                                          |
 | `device.network.get`    | `{}`                                                                                          |
+| `device.storage.get`    | `{}`                                                                                          |
+| `device.vibrate`        | `{"durationMs":300,"amplitude":128}`                                                          |
 | `device.navigation`     | `{"action":"back"}`                                                                           |
+| `app.open`              | `{"packageName":"com.android.settings","waitForForegroundMs":5000}`                           |
+| `display.status`        | `{}`                                                                                          |
+| `audio.status`          | `{}`                                                                                          |
+| `audio.volume.set`      | `{"stream":"media","levelPercent":50}`                                                        |
+| `flashlight.status`     | `{}`                                                                                          |
+| `flashlight.set`        | `{"enabled":true}`                                                                            |
 | `location.get`          | `{"desiredAccuracy":"balanced","maxAgeMs":15000,"timeoutMs":10000}`                           |
 | `notification.show`     | `{"title":"ADC","body":"Task completed"}`                                                     |
 | `screen.capture`        | `{"format":"png","maxWidth":1080}`                                                            |
 | `ui.inspect`            | `{"maxDepth":12,"maxNodes":500}`                                                              |
+| `ui.wait`               | `{"condition":"element","selector":{"text":"Save"},"state":"present","timeoutMs":10000}`      |
 | `ui.action`             | `{"selector":{"text":"Save"},"action":"click"}`                                               |
 | `ui.gesture`            | `{"type":"swipe","startX":500,"startY":1500,"endX":500,"endY":500,"durationMs":300}`          |
 | `file.list`             | `{"path":"/absolute/folder","glob":"**/*.ts","maxEntries":1000}`                              |

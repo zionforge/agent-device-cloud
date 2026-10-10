@@ -135,11 +135,17 @@ class NodeProtocol(
         val response = if (text.isBlank()) JSONObject() else JSONObject(text)
         if (status !in 200..299) {
             val error = response.optJSONObject("error")
+            val details = error?.optJSONObject("details")
             throw NodeApiException(
                 status,
                 error?.optString("code", "internal") ?: "internal",
-                error?.optString("message", "ADC returned HTTP $status")
-                    ?: "ADC returned HTTP $status"
+                buildString {
+                    append(
+                        error?.optString("message", "ADC returned HTTP $status")
+                            ?: "ADC returned HTTP $status"
+                    )
+                    if (details != null) append(": ").append(details)
+                }
             )
         }
         return response

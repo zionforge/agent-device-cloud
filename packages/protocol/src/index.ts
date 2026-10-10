@@ -180,22 +180,59 @@ const ShellOptions = {
 } as const;
 const UiSelectorSchema = z
   .object({
+    snapshotId: z.string().min(1).max(128).optional(),
+    nodeId: z.number().int().min(0).max(1000).optional(),
+    ref: z.string().min(1).max(512).optional(),
     resourceId: z.string().min(1).max(256).optional(),
     text: z.string().max(1000).optional(),
     contentDescription: z.string().max(1000).optional(),
     className: z.string().min(1).max(256).optional(),
     packageName: z.string().min(1).max(256).optional(),
+    role: z
+      .enum([
+        "button",
+        "checkbox",
+        "switch",
+        "edit_text",
+        "text",
+        "image",
+        "list",
+        "list_item",
+        "web_view",
+        "container",
+        "unknown"
+      ])
+      .optional(),
+    clickable: z.boolean().optional(),
+    longClickable: z.boolean().optional(),
+    editable: z.boolean().optional(),
+    scrollable: z.boolean().optional(),
+    enabled: z.boolean().optional(),
+    focused: z.boolean().optional(),
+    selected: z.boolean().optional(),
+    checked: z.boolean().optional(),
     match: z.enum(["exact", "contains"]).default("exact"),
     index: z.number().int().min(0).max(1000).default(0)
   })
   .strict()
   .refine(
     (selector) =>
+      selector.nodeId !== undefined ||
+      selector.ref !== undefined ||
       selector.resourceId !== undefined ||
       selector.text !== undefined ||
       selector.contentDescription !== undefined ||
       selector.className !== undefined ||
-      selector.packageName !== undefined,
+      selector.packageName !== undefined ||
+      selector.role !== undefined ||
+      selector.clickable !== undefined ||
+      selector.longClickable !== undefined ||
+      selector.editable !== undefined ||
+      selector.scrollable !== undefined ||
+      selector.enabled !== undefined ||
+      selector.focused !== undefined ||
+      selector.selected !== undefined ||
+      selector.checked !== undefined,
     "UI selector must include at least one matching field."
   );
 const UiActionArgsSchema = z
@@ -207,9 +244,11 @@ const UiActionArgsSchema = z
       "focus",
       "scroll_forward",
       "scroll_backward",
-      "set_text"
+      "set_text",
+      "clear_text"
     ]),
-    text: z.string().max(4000).optional()
+    text: z.string().max(4000).optional(),
+    postActionWaitMs: z.number().int().min(0).max(5000).default(500)
   })
   .strict()
   .superRefine((value, context) => {
@@ -232,10 +271,43 @@ export const ToolArgsSchemas = {
   "device.list": z.object({}).strict(),
   "device.status": z.object({ nodeId: NodeIdSchema }).strict(),
   "device.battery.get": z.object({}).strict(),
+  "device.info.get": z.object({}).strict(),
   "device.network.get": z.object({}).strict(),
+  "device.storage.get": z.object({}).strict(),
+  "device.vibrate": z
+    .object({
+      durationMs: z.number().int().min(1).max(10_000).default(300),
+      amplitude: z.number().int().min(1).max(255).default(128)
+    })
+    .strict(),
   "device.navigation": z
     .object({
       action: z.enum(["back", "home", "recents", "notifications", "quick_settings"])
+    })
+    .strict(),
+  "app.open": z
+    .object({
+      packageName: z
+        .string()
+        .min(3)
+        .max(255)
+        .regex(/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/),
+      waitForForegroundMs: z.number().int().min(0).max(15_000).default(5000)
+    })
+    .strict(),
+  "display.status": z.object({}).strict(),
+  "audio.status": z.object({}).strict(),
+  "audio.volume.set": z
+    .object({
+      stream: z.enum(["media", "alarm", "notification", "ring", "system", "voice_call"]),
+      levelPercent: z.number().int().min(0).max(100)
+    })
+    .strict(),
+  "flashlight.status": z.object({}).strict(),
+  "flashlight.set": z
+    .object({
+      enabled: z.boolean(),
+      cameraId: z.string().min(1).max(128).optional()
     })
     .strict(),
   "location.get": z
@@ -268,6 +340,33 @@ export const ToolArgsSchemas = {
       maxNodes: z.number().int().min(1).max(1000).default(500)
     })
     .strict(),
+  "ui.wait": z.discriminatedUnion("condition", [
+    z
+      .object({
+        condition: z.literal("element"),
+        selector: UiSelectorSchema,
+        state: z.enum(["present", "absent"]).default("present"),
+        timeoutMs: z.number().int().min(0).max(30_000).default(10_000),
+        pollIntervalMs: z.number().int().min(50).max(1000).default(200)
+      })
+      .strict(),
+    z
+      .object({
+        condition: z.literal("app"),
+        packageName: z.string().min(1).max(255),
+        timeoutMs: z.number().int().min(0).max(30_000).default(10_000),
+        pollIntervalMs: z.number().int().min(50).max(1000).default(200)
+      })
+      .strict(),
+    z
+      .object({
+        condition: z.literal("idle"),
+        idleMs: z.number().int().min(100).max(5000).default(500),
+        timeoutMs: z.number().int().min(0).max(30_000).default(10_000),
+        pollIntervalMs: z.number().int().min(50).max(1000).default(100)
+      })
+      .strict()
+  ]),
   "ui.action": UiActionArgsSchema,
   "ui.gesture": z.discriminatedUnion("type", [
     z
@@ -396,9 +495,15 @@ export const ReadOnlyTools: ReadonlySet<ToolName> = new Set([
   "device.list",
   "device.status",
   "device.battery.get",
+  "device.info.get",
   "device.network.get",
+  "device.storage.get",
+  "display.status",
+  "audio.status",
+  "flashlight.status",
   "screen.capture",
   "ui.inspect",
+  "ui.wait",
   "location.get",
   "file.list",
   "file.read",
@@ -410,6 +515,10 @@ export const ReadOnlyTools: ReadonlySet<ToolName> = new Set([
 
 export const SideEffectTools: ReadonlySet<ToolName> = new Set([
   "device.navigation",
+  "device.vibrate",
+  "app.open",
+  "audio.volume.set",
+  "flashlight.set",
   "notification.show",
   "ui.action",
   "ui.gesture",

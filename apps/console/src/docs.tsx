@@ -90,12 +90,22 @@ export const documentedTools = [
   "device.list",
   "device.status",
   "device.battery.get",
+  "device.info.get",
   "device.network.get",
+  "device.storage.get",
+  "device.vibrate",
   "device.navigation",
+  "app.open",
+  "display.status",
+  "audio.status",
+  "audio.volume.set",
+  "flashlight.status",
+  "flashlight.set",
   "location.get",
   "notification.show",
   "screen.capture",
   "ui.inspect",
+  "ui.wait",
   "ui.action",
   "ui.gesture",
   "file.list",
@@ -1031,10 +1041,16 @@ function ToolReference() {
     {
       tools: [
         "device.battery.get",
+        "device.info.get",
         "device.network.get",
+        "device.storage.get",
+        "display.status",
+        "audio.status",
+        "flashlight.status",
         "location.get",
         "screen.capture",
-        "ui.inspect"
+        "ui.inspect",
+        "ui.wait"
       ],
       risk: "Read",
       purpose: "Read live state exposed by an authorized mobile device."
@@ -1045,7 +1061,15 @@ function ToolReference() {
       purpose: "Present an authorized notification on a mobile device."
     },
     {
-      tools: ["device.navigation", "ui.action", "ui.gesture"],
+      tools: [
+        "device.navigation",
+        "device.vibrate",
+        "app.open",
+        "audio.volume.set",
+        "flashlight.set",
+        "ui.action",
+        "ui.gesture"
+      ],
       risk: "Execute",
       purpose: "Operate the visible Android interface within local Accessibility permission."
     },

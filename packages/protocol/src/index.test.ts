@@ -135,6 +135,60 @@ describe("InvocationSchema", () => {
     expect(isSideEffectTool("screen.capture")).toBe(false);
   });
 
+  it("validates native Android controls and richer UI selectors", () => {
+    const target = { nodeId: "node_android" };
+    const wait = InvocationSchema.parse(
+      invocation({
+        target,
+        tool: "ui.wait",
+        args: {
+          condition: "element",
+          selector: { ref: "w1/0/2", enabled: true }
+        }
+      })
+    );
+    expect(wait.args).toMatchObject({
+      state: "present",
+      timeoutMs: 10_000,
+      pollIntervalMs: 200
+    });
+    expect(
+      InvocationSchema.safeParse(
+        invocation({
+          target,
+          tool: "app.open",
+          args: { packageName: "com.android.settings" }
+        })
+      ).success
+    ).toBe(false);
+    expect(
+      InvocationSchema.parse({
+        ...invocation({
+          target,
+          tool: "app.open",
+          args: { packageName: "com.android.settings" }
+        }),
+        idempotencyKey: "open-settings-1"
+      }).args
+    ).toEqual({
+      packageName: "com.android.settings",
+      waitForForegroundMs: 5000
+    });
+    expect(
+      InvocationSchema.safeParse({
+        ...invocation({
+          target,
+          tool: "audio.volume.set",
+          args: { stream: "media", levelPercent: 101 }
+        }),
+        idempotencyKey: "volume-1"
+      }).success
+    ).toBe(false);
+    expect(isSideEffectTool("device.vibrate")).toBe(true);
+    expect(isSideEffectTool("flashlight.set")).toBe(true);
+    expect(isSideEffectTool("device.info.get")).toBe(false);
+  });
+
   it("accepts namespaced MCP tools and requires an idempotency key", () => {
     const custom = invocation({
       target: { nodeId: "node_macbook" },
