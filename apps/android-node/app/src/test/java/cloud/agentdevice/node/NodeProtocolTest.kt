@@ -51,6 +51,7 @@ class NodeProtocolTest {
             "\"before\u2028middle\u2029after\"",
             NodeProtocol.canonicalString("before\u2028middle\u2029after")
         )
+        assertEquals("\"Asia/Shanghai\"", NodeProtocol.canonicalString("Asia/Shanghai"))
     }
 
     @Test

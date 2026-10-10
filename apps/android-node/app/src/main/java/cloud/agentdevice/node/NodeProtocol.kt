@@ -186,6 +186,7 @@ class NodeProtocol(
 
         internal fun canonicalString(value: String): String =
             JSONObject.quote(value)
+                .replace("\\/", "/")
                 .replace("\\u2028", "\u2028")
                 .replace("\\u2029", "\u2029")
 
