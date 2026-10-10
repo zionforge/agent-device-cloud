@@ -77,13 +77,15 @@
   reinstall upgrades and launchd stale-registration recovery
 - Explicit `adc update --check` / `adc update` with build-ID comparison, saved release source,
   checksum verification, atomic activation and service-restart rollback
+- Legacy-compatible and complete v2 release manifests, console build comparison, Connector log
+  notices and cached non-blocking interactive CLI update discovery
 - User launchd/systemd/Task Scheduler startup and start/stop/restart/status/logs/uninstall commands
 - Exact-ID-confirmed local unpair for replacing deleted devices while retaining durable receipts
 - Console installation command, separate CDN/release origin and automatic device presence refresh
 
 ## Verified
 
-- 164 passing tests across 36 files on Node.js 24; one opt-in macOS service test skipped (165 total)
+- 167 passing unit tests across 28 files; one opt-in macOS service test remains environment-gated
 - Real PostgreSQL migration, concurrent `SKIP LOCKED` claims and restart persistence
 - Pairing/replay/revoke behavior
 - Symlink escape, secret redaction, command denial, timeout/cancel and output limits
@@ -114,7 +116,7 @@
   pages, pre-filled management forms, unavailable scopes and deletion dialogs
 - Production entry HTTP smoke: built assets/CSP, login routes, anonymous API denial and OAuth discovery
 - Production dependency audit against npmjs: no known vulnerabilities after updating Nodemailer/Vitest
-- All four client archives built with verified official Node.js 24.21.0 runtime downloads
+- All five client archives built with verified official Node.js 24.21.0 runtime downloads
 - Installed macOS arm64 client over real HTTP: pairing, online presence, scoped CLI file read,
   repeat installation, identity preservation, corrupt-download rejection, reconnect and uninstall
 - Installed launchers work with no Node.js/pnpm on PATH and paths containing shell metacharacters
@@ -124,7 +126,7 @@
 The hosted preview at `https://adc.47-101-150-8.nip.io:8443` runs the same application under systemd
 with an isolated PostgreSQL database and Caddy TLS routing. Public health, static assets, OAuth
 metadata, account registration, authenticated session persistence across an application restart,
-email verification, password recovery and all four downloadable Connector archives have been
+email verification, password recovery and all five downloadable Connector archives have been
 verified against that deployment. The email round trip covers real DirectMail delivery, verification
 auto-sign-in, password reset, old-session revocation and login with the new password.
 

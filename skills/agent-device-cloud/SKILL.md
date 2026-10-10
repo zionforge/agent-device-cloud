@@ -54,12 +54,16 @@ Read [tool-invocation.md](references/tool-invocation.md) before invoking a devic
    and user intent; changed input requires a new key.
 7. Capture `invocationId`, `jobId`, status, error and receipt from JSON output. Never infer success
    from exit code alone.
+8. For mobile UI and device-status tools expected to finish quickly, pass `--wait 1500` so the CLI
+   can return a terminal result without a second process. If it still returns `queued` or `running`,
+   continue with the normal task state machine.
 
 ## Follow The State Machine
 
-- `queued` or `running`: poll `adc task status <jobId> --json` with bounded backoff. Start at two
-  seconds, cap at ten seconds, and stop at the user or tool deadline. A local wait timeout is not a
-  task failure and must not trigger a new invocation.
+- `queued` or `running`: poll `adc task status <jobId> --json` with bounded backoff. Mobile UI work
+  commonly completes in under one second, so check after 200 ms, then 500 ms and one second before
+  backing off to at most five seconds. Stop at the user or tool deadline. A local wait timeout is
+  not a task failure and must not trigger a new invocation.
 - `approval_required`: record `invocationId`, `approvalId` and expiry, then ask the user to review
   it. After the user confirms a decision, run
   `adc invocation status <invocationId> --json`; do not submit a replacement invocation.

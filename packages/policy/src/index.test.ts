@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvocationSchema, type Invocation } from "@adc/protocol";
-import { evaluatePolicy, type PolicyContext } from "./index.ts";
+import { evaluatePolicy, requiresApproval, type PolicyContext } from "./index.ts";
 
 function invocation(tool = "file.read", args: Record<string, unknown> = {}): Invocation {
   return InvocationSchema.parse({
@@ -180,5 +180,20 @@ describe("evaluatePolicy", () => {
         invocation(tool, { query: "is:open" })
       )
     ).toMatchObject({ outcome: "deny", reasonCode: "agent.capability_denied" });
+  });
+
+  it.each([
+    "device.navigation",
+    "device.vibrate",
+    "app.open",
+    "audio.volume.set",
+    "flashlight.set",
+    "ui.action",
+    "ui.gesture",
+    "shell.exec",
+    "command.template.run",
+    "test.run"
+  ] as const)("requires execute approval for %s", (tool) => {
+    expect(requiresApproval("execute", "workspace-write", tool)).toBe(true);
   });
 });

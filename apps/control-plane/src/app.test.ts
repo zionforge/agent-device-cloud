@@ -1,4 +1,7 @@
 import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { AdcClient } from "@adc/client";
@@ -12,9 +15,11 @@ import {
   createId
 } from "@adc/protocol";
 import { createControlPlane } from "./app.ts";
+import type { NodeDistribution } from "./distribution.ts";
 import { accessFixture } from "../../../tests/helpers/access-fixture.ts";
 
 const apps: Awaited<ReturnType<typeof createControlPlane>>[] = [];
+const directories: string[] = [];
 const cookie = "adc.session_token=api-test-session";
 
 function fetchFor(app: Awaited<ReturnType<typeof createControlPlane>>): typeof fetch {
@@ -35,7 +40,7 @@ function fetchFor(app: Awaited<ReturnType<typeof createControlPlane>>): typeof f
   }) as typeof fetch;
 }
 
-async function fixture(now?: () => Date) {
+async function fixture(now?: () => Date, nodeDistribution?: NodeDistribution) {
   const store = new MemoryStore();
   const assets = new Map<string, Buffer>();
   const app = await createControlPlane({
@@ -57,7 +62,8 @@ async function fixture(now?: () => Date) {
         return Buffer.from(data);
       }
     },
-    ...(now ? { now } : {})
+    ...(now ? { now } : {}),
+    ...(nodeDistribution ? { nodeDistribution } : {})
   });
   apps.push(app);
   const fetcher = fetchFor(app);
@@ -108,9 +114,50 @@ async function ownerRequest(
 
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
+  await Promise.all(
+    directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))
+  );
 });
 
 describe("control plane", () => {
+  it("marks legacy desktop nodes without a build ID as updateable", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "adc-control-plane-release-"));
+    directories.push(directory);
+    const buildId = `sha256:${"b".repeat(64)}`;
+    await writeFile(
+      resolve(directory, "manifest-v2.json"),
+      JSON.stringify({
+        version: "0.1.1",
+        runtimeVersion: "24.21.0",
+        buildId
+      })
+    );
+    const { owner, node, capability, paired } = await fixture(undefined, {
+      directory,
+      publicUrl: "https://devices.example.com"
+    });
+
+    await expect(node.poll(capability)).resolves.toMatchObject({
+      update: {
+        state: "update_available",
+        currentBuildId: null,
+        latest: { version: "0.1.1", buildId }
+      }
+    });
+    await expect(owner.listNodes()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nodeId: paired.nodeId,
+          update: {
+            state: "update_available",
+            currentBuildId: null,
+            latest: expect.objectContaining({ version: "0.1.1", buildId })
+          }
+        })
+      ])
+    );
+  });
+
   it("accepts native Windows nodes", async () => {
     const { owner, fetcher } = await fixture();
     const pairing = await owner.createPairingCode();

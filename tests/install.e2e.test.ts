@@ -34,6 +34,7 @@ describe("released device installer over HTTP", () => {
   let env: NodeJS.ProcessEnv;
   let corruptArchive = false;
   const projectRoot = resolve(import.meta.dirname, "..");
+  let releaseVersion: string;
   const run = (binary: string, args: string[], input = "", environment = env) =>
     new Promise<{ code: number | null; stdout: string; stderr: string }>((done, reject) => {
       const child = spawn(binary, args, {
@@ -105,6 +106,11 @@ describe("released device installer over HTTP", () => {
   };
 
   beforeAll(async () => {
+    releaseVersion = (
+      JSON.parse(await readFile(resolve(projectRoot, "package.json"), "utf8")) as {
+        version: string;
+      }
+    ).version;
     await mkdir(resolve(projectRoot, ".adc"), { recursive: true });
     directory = await mkdtemp(resolve(projectRoot, ".adc/install-e2e-"));
     const user = resolve(directory, "user ' $literal & spaces");
@@ -136,7 +142,10 @@ describe("released device installer over HTTP", () => {
       process.env
     );
     expect(build.code, build.stderr).toBe(0);
-    await writeFile(resolve(releases, "adc-0.1.0-win32-x64-0123456789abcdef.zip"), "zip fixture");
+    await writeFile(
+      resolve(releases, `adc-${releaseVersion}-win32-x64-0123456789abcdef.zip`),
+      "zip fixture"
+    );
     const socket = createServer();
     await new Promise<void>((done) => socket.listen(0, "127.0.0.1", done));
     const address = socket.address();
@@ -206,7 +215,7 @@ describe("released device installer over HTTP", () => {
     expect(windowsInstallerSource).toContain(".adc-managed-user-path");
     expect(windowsInstallerSource).not.toContain("@ADC_");
     const windowsArchive = await fetch(
-      `${origin}/downloads/node/adc-0.1.0-win32-x64-0123456789abcdef.zip`
+      `${origin}/downloads/node/adc-${releaseVersion}-win32-x64-0123456789abcdef.zip`
     );
     expect(windowsArchive.status).toBe(200);
     expect(windowsArchive.headers.get("content-type")).toContain("application/zip");
@@ -231,13 +240,13 @@ describe("released device installer over HTTP", () => {
     expect(await readFile(resolve(env.ADC_BIN_DIR!, "adc-node"), "utf8")).toContain(
       runtimePathExport
     );
-    expect((await node(["--version"])).stdout.trim()).toBe("0.1.0");
+    expect((await node(["--version"])).stdout.trim()).toBe(releaseVersion);
     expect((await cli(["--help"])).code).toBe(0);
     const updateCheck = await cli(["update", "--check", "--json"]);
     expect(updateCheck.code, updateCheck.stderr).toBe(0);
     expect(JSON.parse(updateCheck.stdout)).toMatchObject({
-      current: { version: "0.1.0", buildId: expect.stringMatching(/^sha256:/) },
-      available: { version: "0.1.0", buildId: expect.stringMatching(/^sha256:/) },
+      current: { version: releaseVersion, buildId: expect.stringMatching(/^sha256:/) },
+      available: { version: releaseVersion, buildId: expect.stringMatching(/^sha256:/) },
       updateAvailable: false
     });
     const installedTarget = await readlink(resolve(env.ADC_INSTALL_DIR!, "current"));

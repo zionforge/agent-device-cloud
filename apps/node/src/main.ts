@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { ReadStream, WriteStream } from "node:tty";
 import { NodeApiClient, generateNodeKeyPair } from "@adc/client/node";
+import { z } from "zod";
 import { NodeDaemon } from "./daemon.ts";
 import {
   ConfigSchema,
@@ -28,7 +29,34 @@ import {
 } from "./service.ts";
 import { nodePlatform } from "./platform.ts";
 
-const version = process.env.ADC_BUILD_VERSION ?? "0.1.0-dev";
+const InstalledReleaseSchema = z
+  .object({
+    version: z.string().min(1),
+    buildId: z
+      .string()
+      .regex(/^sha256:[a-f0-9]{64}$/)
+      .optional()
+  })
+  .passthrough();
+
+async function installedRelease() {
+  const install = process.env.ADC_INSTALL_DIR;
+  if (!install) return;
+  const directory = process.env.ADC_RELEASE
+    ? resolve(install, "releases", process.env.ADC_RELEASE)
+    : resolve(install, "current");
+  try {
+    return InstalledReleaseSchema.parse(
+      JSON.parse(await readFile(resolve(directory, "release.json"), "utf8"))
+    );
+  } catch {
+    return;
+  }
+}
+
+const release = await installedRelease();
+const version = process.env.ADC_BUILD_VERSION ?? release?.version ?? "0.1.0-dev";
+const buildId = process.env.ADC_BUILD_ID ?? release?.buildId;
 const usage = `Agent Device Cloud device ${version}
 Usage:
   adc-node setup --url ORIGIN --code CODE [--label NAME] [--root-path FOLDER]
@@ -448,7 +476,17 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "status") {
-    console.log(JSON.stringify(await serviceStatus(), null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...(await serviceStatus()),
+          version,
+          buildId: buildId ?? null
+        },
+        null,
+        2
+      )
+    );
     return;
   }
   if (command === "start") {
@@ -507,6 +545,7 @@ async function main(): Promise<void> {
     const daemon = new NodeDaemon({
       ...config,
       nodeVersion: version,
+      ...(buildId ? { buildId } : {}),
       loadAccess: async () => {
         const current = await loadConfig();
         if (

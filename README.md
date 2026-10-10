@@ -289,7 +289,10 @@ for command usage and add `--json` to operations whose output will be parsed. `a
 compares the installed build with the
 current platform archive; `adc update` downloads the checksummed release, switches atomically and
 restarts the Connector while preserving identity, folders and receipts. The current release format
-contains its Node.js runtime, so updates download the complete platform archive.
+contains its Node.js runtime, so updates download the complete platform archive. The console marks
+desktop Connectors whose build differs from the published release, including legacy nodes without a
+build ID. Interactive CLI commands use a daily local cache and detached refresh to print update
+notices without delaying the foreground command; JSON, CI and MCP paths remain deterministic.
 
 For advanced headless integrations, use `ADC_URL` + `ADC_TOKEN`, or import an access key with
 `adc auth token --url URL --stdin`. Use `--password-stdin` for noninteractive login. Do not put

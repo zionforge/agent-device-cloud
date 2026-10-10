@@ -134,14 +134,19 @@ key for multiple operations.
 
 ## Invocation Lifecycle
 
+For mobile UI and device-status calls, add `--wait 1500` to the initial `adc invoke` command. This
+keeps one CLI process alive for the common sub-second completion path. A result that remains
+`queued` or `running` still follows the workflow below.
+
 For `queued` or `running`, save the `jobId` and poll:
 
 ```bash
 adc task status JOB_ID --json
 ```
 
-Poll after 2 seconds, then 5 seconds, then at most every 10 seconds. Stop at the user-visible or
-tool timeout. If local waiting stops, retain the `jobId`; do not submit the operation again.
+Poll after 200 milliseconds, then 500 milliseconds and one second. For work that is still running,
+back off to at most every five seconds. Stop at the user-visible or tool timeout. If local waiting
+stops, retain the `jobId`; do not submit the operation again.
 
 For `approval_required`, save `invocationId`, `error.details.approvalId`, and
 `error.details.expiresAt`. Ask the user to decide independently. After the user confirms:

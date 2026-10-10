@@ -482,6 +482,63 @@ export function isBuiltinTool(tool: string): tool is ToolName {
   return ToolNameSchema.safeParse(tool).success;
 }
 
+const UiSelectorMatchFields = [
+  "nodeId",
+  "ref",
+  "resourceId",
+  "text",
+  "contentDescription",
+  "className",
+  "packageName",
+  "role",
+  "clickable",
+  "longClickable",
+  "editable",
+  "scrollable",
+  "enabled",
+  "focused",
+  "selected",
+  "checked"
+] as const;
+
+export function toolArgsJsonSchema(tool: ToolName): Record<string, unknown> {
+  const schema = z.toJSONSchema(ToolArgsSchemas[tool], {
+    target: "draft-2020-12",
+    unrepresentable: "any",
+    reused: "inline",
+    io: "input"
+  }) as Record<string, unknown>;
+  const requireSelectorField = {
+    anyOf: UiSelectorMatchFields.map((field) => ({ required: [field] }))
+  };
+  if (tool === "ui.action") {
+    const properties = schema.properties as Record<string, Record<string, unknown>>;
+    properties.selector = { ...properties.selector, ...requireSelectorField };
+    schema.allOf = [
+      {
+        if: {
+          properties: { action: { const: "set_text" } },
+          required: ["action"]
+        },
+        then: { required: ["text"] },
+        else: { not: { required: ["text"] } }
+      }
+    ];
+  } else if (tool === "ui.wait") {
+    const variants = schema.oneOf as Array<Record<string, unknown>>;
+    const element = variants.find(
+      (variant) =>
+        ((variant.properties as Record<string, Record<string, unknown>> | undefined)?.condition
+          ?.const as string | undefined) === "element"
+    );
+    if (element) {
+      const properties = element.properties as Record<string, Record<string, unknown>>;
+      properties.selector = { ...properties.selector, ...requireSelectorField };
+    }
+  }
+  return schema;
+}
+
 export function absolutePathForToolArgs(
   tool: string,
   args: Record<string, unknown>
@@ -511,6 +568,27 @@ export const ReadOnlyTools: ReadonlySet<ToolName> = new Set([
   "command.template.list",
   "task.status",
   "task.result"
+]);
+
+export const ControlPlaneTools: ReadonlySet<ToolName> = new Set([
+  "device.list",
+  "device.status",
+  "task.status",
+  "task.result",
+  "task.cancel"
+]);
+
+export const ExecutionTools: ReadonlySet<ToolName> = new Set([
+  "device.navigation",
+  "device.vibrate",
+  "app.open",
+  "audio.volume.set",
+  "flashlight.set",
+  "ui.action",
+  "ui.gesture",
+  "shell.exec",
+  "command.template.run",
+  "test.run"
 ]);
 
 export const SideEffectTools: ReadonlySet<ToolName> = new Set([
@@ -797,6 +875,10 @@ export const CapabilitySchema = z
     platform: NodePlatformSchema,
     accessMode: z.enum(["none", "selected", "home", "full"]).optional(),
     nodeVersion: z.string().min(1).max(64),
+    buildId: z
+      .string()
+      .regex(/^sha256:[a-f0-9]{64}$/)
+      .optional(),
     advertisedAt: z.iso.datetime({ offset: true })
   })
   .strict();

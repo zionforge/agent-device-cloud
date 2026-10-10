@@ -8,13 +8,14 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation/types.js";
-import { z } from "zod";
 import { AdcClient, buildInvocation, type InvocationContext } from "@adc/client";
 import {
+  ControlPlaneTools,
   ToolArgsSchemas,
   ToolNameSchema,
   isBuiltinTool,
   isSideEffectTool,
+  toolArgsJsonSchema,
   type InvocationResult,
   type ToolCapability,
   type ToolId,
@@ -22,11 +23,12 @@ import {
 } from "@adc/protocol";
 
 export interface McpAdapterOptions {
-  client: Pick<AdcClient, "invoke">;
+  client: Pick<AdcClient, "invoke"> & Partial<Pick<AdcClient, "taskStatus">>;
   context: InvocationContext;
   loadContext?: () => Promise<InvocationContext>;
   defaultTarget?: { nodeId: string } | { projectId: string; affinity?: string };
   allowedTools?: ToolId[];
+  quickWaitMs?: number;
 }
 
 interface AdapterInput {
@@ -34,14 +36,6 @@ interface AdapterInput {
   target?: { nodeId: string } | { projectId: string; affinity?: string };
   idempotencyKey?: string;
 }
-
-const controlPlaneTools: ReadonlySet<ToolName> = new Set([
-  "device.list",
-  "device.status",
-  "task.status",
-  "task.result",
-  "task.cancel"
-]);
 
 function nodeIdsForTool(context: InvocationContext, tool: ToolId): string[] | undefined {
   const advertised = context.toolNodeIds?.[tool];
@@ -73,7 +67,7 @@ function targetJsonSchema(
   context: InvocationContext,
   tool: ToolId
 ): Record<string, unknown> | undefined {
-  if (isBuiltinTool(tool) && controlPlaneTools.has(tool)) {
+  if (isBuiltinTool(tool) && ControlPlaneTools.has(tool)) {
     return {
       oneOf: [
         {
@@ -161,17 +155,10 @@ function toolDefinition(
   const targetSchema = targetJsonSchema(context, tool);
   if (!targetSchema) return;
   const builtin = isBuiltinTool(tool);
-  const argsSchema = builtin
-    ? (z.toJSONSchema(ToolArgsSchemas[tool], {
-        target: "draft-2020-12",
-        unrepresentable: "any",
-        reused: "inline",
-        io: "input"
-      }) as Record<string, unknown>)
-    : capability?.inputSchema;
+  const argsSchema = builtin ? toolArgsJsonSchema(tool) : capability?.inputSchema;
   if (!argsSchema) return;
   const sideEffect = isSideEffectTool(tool);
-  const targetRequired = !(builtin && controlPlaneTools.has(tool));
+  const targetRequired = !(builtin && ControlPlaneTools.has(tool));
   return {
     name: tool,
     ...(capability?.title ? { title: capability.title } : {}),
@@ -189,7 +176,7 @@ function toolDefinition(
 export function projectToolDefinitions(
   options: Pick<McpAdapterOptions, "context" | "allowedTools">
 ): Tool[] {
-  const allowed = options.allowedTools ?? ToolNameSchema.options;
+  const allowed = options.context.allowedTools ?? options.allowedTools ?? ToolNameSchema.options;
   return allowed.flatMap((tool) => {
     const definition = toolDefinition(
       options.context,
@@ -213,16 +200,22 @@ export function projectToolDefinitions(
 export class McpInvocationAdapter {
   constructor(private readonly options: McpAdapterOptions) {}
 
-  async invoke(tool: ToolId, input: AdapterInput): Promise<InvocationResult> {
-    const context = this.options.loadContext
-      ? await this.options.loadContext()
-      : this.options.context;
+  async loadContext(): Promise<InvocationContext> {
+    return this.options.loadContext ? await this.options.loadContext() : this.options.context;
+  }
+
+  async invoke(
+    tool: ToolId,
+    input: AdapterInput,
+    currentContext?: InvocationContext
+  ): Promise<InvocationResult> {
+    const context = currentContext ?? (await this.loadContext());
     if (context.allowedTools && !context.allowedTools.includes(tool)) {
       throw new Error(`Agent grant no longer allows ${tool}`);
     }
     const target = input.target ?? this.options.defaultTarget;
     const nodeIds = nodeIdsForTool(context, tool);
-    if (!(isBuiltinTool(tool) && controlPlaneTools.has(tool)) && nodeIds !== undefined) {
+    if (!(isBuiltinTool(tool) && ControlPlaneTools.has(tool)) && nodeIds !== undefined) {
       if (!target || !("nodeId" in target)) {
         throw new Error(`target.nodeId is required for ${tool}`);
       }
@@ -238,25 +231,30 @@ export class McpInvocationAdapter {
       source: "mcp",
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {})
     });
-    return this.options.client.invoke(invocation);
+    let result = await this.options.client.invoke(invocation);
+    const taskStatus = this.options.client.taskStatus?.bind(this.options.client);
+    const waitMs = this.options.quickWaitMs ?? 1_500;
+    const jobId = result.jobId;
+    if (!taskStatus || !jobId || waitMs <= 0) return result;
+    const deadline = Date.now() + waitMs;
+    let delay = 50;
+    while (["queued", "running"].includes(result.status) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(delay, deadline - Date.now())));
+      result = await taskStatus(jobId);
+      delay = Math.min(delay * 2, 400);
+    }
+    return result;
   }
 }
 
-export function createMcpServer(options: McpAdapterOptions): Server {
-  const server = new Server(
-    { name: "agent-device-cloud", version: "0.1.0" },
-    { capabilities: { tools: {} } }
-  );
-  const adapter = new McpInvocationAdapter(options);
-  const allowed = options.allowedTools ?? ToolNameSchema.options;
-  const argsValidators = new Map<
-    ToolId,
-    (
-      input: unknown
-    ) =>
-      | { valid: true; data: unknown; errorMessage: undefined }
-      | { valid: false; data: undefined; errorMessage: string }
-  >();
+type ArgsValidation =
+  | { valid: true; data: unknown; errorMessage: undefined }
+  | { valid: false; data: undefined; errorMessage: string };
+type ArgsValidator = (input: unknown) => ArgsValidation;
+
+function toolSnapshot(options: McpAdapterOptions, context: InvocationContext) {
+  const allowed = context.allowedTools ?? options.allowedTools ?? ToolNameSchema.options;
+  const argsValidators = new Map<ToolId, ArgsValidator>();
   for (const tool of allowed) {
     if (isBuiltinTool(tool)) {
       argsValidators.set(tool, (input) => {
@@ -267,29 +265,63 @@ export function createMcpServer(options: McpAdapterOptions): Server {
       });
       continue;
     }
-    const schema = options.context.toolDefinitions?.[tool]?.inputSchema;
-    if (schema) {
-      try {
-        argsValidators.set(
-          tool,
-          new AjvJsonSchemaValidator().getValidator(schema as JsonSchemaType)
-        );
-      } catch {
-        // An invalid Provider schema hides only that tool.
-      }
+    const schema = context.toolDefinitions?.[tool]?.inputSchema;
+    if (!schema) continue;
+    try {
+      argsValidators.set(tool, new AjvJsonSchemaValidator().getValidator(schema as JsonSchemaType));
+    } catch {
+      // An invalid Provider schema hides only that tool.
     }
   }
-  const tools = projectToolDefinitions(options).filter((tool) => argsValidators.has(tool.name));
-  const toolsById = new Map(tools.map((tool) => [tool.name, tool]));
+  const tools = projectToolDefinitions({ context, allowedTools: allowed }).filter((tool) =>
+    argsValidators.has(tool.name)
+  );
+  return {
+    context,
+    tools,
+    toolsById: new Map(tools.map((tool) => [tool.name as ToolId, tool])),
+    argsValidators,
+    fingerprint: JSON.stringify(tools)
+  };
+}
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
+function normalizeToolArgs(input: unknown): unknown {
+  if (typeof input !== "string") return input;
+  if (Buffer.byteLength(input) > 64 * 1024) return input;
+  try {
+    const parsed = JSON.parse(input);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : input;
+  } catch {
+    return input;
+  }
+}
+
+export function createMcpServer(options: McpAdapterOptions): Server {
+  const server = new Server(
+    { name: "agent-device-cloud", version: "0.1.0" },
+    { capabilities: { tools: { listChanged: true } } }
+  );
+  const adapter = new McpInvocationAdapter(options);
+  let current = toolSnapshot(options, options.context);
+  const refresh = async (notify: boolean) => {
+    const next = toolSnapshot(options, await adapter.loadContext());
+    const changed = next.fingerprint !== current.fingerprint;
+    current = next;
+    if (notify && changed) await server.sendToolListChanged().catch(() => {});
+    return current;
+  };
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: (await refresh(false)).tools
+  }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const snapshot = await refresh(true);
     const tool = request.params.name as ToolId;
-    if (!toolsById.has(tool)) {
+    if (!snapshot.toolsById.has(tool)) {
       throw new McpError(ErrorCode.MethodNotFound, `Tool is not available: ${tool}`);
     }
-    const input = request.params.arguments as unknown as AdapterInput;
-    const validation = argsValidators.get(tool)?.(input.args);
+    const input = (request.params.arguments ?? {}) as Partial<AdapterInput>;
+    const validation = snapshot.argsValidators.get(tool)?.(normalizeToolArgs(input.args));
     if (!validation?.valid) {
       throw new McpError(
         ErrorCode.InvalidParams,
@@ -297,7 +329,15 @@ export function createMcpServer(options: McpAdapterOptions): Server {
       );
     }
     try {
-      const result = await adapter.invoke(tool, { ...input, args: validation.data });
+      const result = await adapter.invoke(
+        tool,
+        {
+          args: validation.data,
+          ...(input.target ? { target: input.target } : {}),
+          ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {})
+        },
+        snapshot.context
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
         structuredContent: result as unknown as Record<string, unknown>,

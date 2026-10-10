@@ -1,6 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { createId, CustomToolIdSchema, ProtocolError, ToolIdSchema } from "@adc/protocol";
+import {
+  createId,
+  CustomToolIdSchema,
+  ExecutionTools,
+  isBuiltinTool,
+  ProtocolError,
+  ToolIdSchema
+} from "@adc/protocol";
 import { ApprovalPolicySchema } from "@adc/policy";
 import type { AgentGrantRecord, AuditEvent, NodeRecord, Store } from "@adc/db";
 
@@ -63,7 +70,6 @@ export const GrantSettingsSchema = z
   })
   .strict();
 const revisionSchema = z.object({ revision: z.number().int().min(1) }).strict();
-const executionTools = new Set(["shell.exec", "command.template.run", "test.run"]);
 /** Cloud controls narrow the locally advertised capability; they never expose new paths. */
 export function effectiveCapability(node: NodeRecord) {
   const capability = node.capability;
@@ -80,7 +86,8 @@ export function effectiveCapability(node: NodeRecord) {
     tools: capability.tools.filter(
       (tool) =>
         (tool.availability?.state ?? "available") === "available" &&
-        (policy.allowExecution || (!executionTools.has(tool.name) && tool.risk !== "execute"))
+        (policy.allowExecution ||
+          !(tool.risk === "execute" || (isBuiltinTool(tool.name) && ExecutionTools.has(tool.name))))
     )
   };
 }

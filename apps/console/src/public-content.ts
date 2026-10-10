@@ -37,6 +37,66 @@ export function localize(value: LocalizedText, locale: Locale): string {
 
 export const publicContent: PublicContentEntry[] = [
   {
+    path: "/updates/connector-0-1-1",
+    kind: "Product update",
+    title: text(
+      "Connector 0.1.1: faster mobile control and visible updates",
+      "Connector 0.1.1：更快的移动端控制与可见更新"
+    ),
+    summary: text(
+      "ADC 0.1.1 tightens Android UI execution, refreshes long-running MCP sessions and makes outdated desktop Connectors visible without blocking CLI work.",
+      "ADC 0.1.1 收紧 Android UI 执行语义、刷新长时间运行的 MCP 会话，并在不阻塞 CLI 工作的前提下标识过期桌面 Connector。"
+    ),
+    publishedAt: "2026-10-11",
+    updatedAt: "2026-10-11",
+    readingMinutes: 4,
+    keywords: [
+      "Agent Device Cloud 0.1.1",
+      "ADC Connector update",
+      "Android accessibility automation",
+      "MCP tool refresh"
+    ],
+    listed: true,
+    relatedPaths: [
+      "/guides/first-device-to-first-tool-call",
+      "/updates/websocket-task-wakeups",
+      "/articles/least-privilege-for-ai-agents"
+    ],
+    sections: [
+      {
+        id: "mobile-control",
+        title: text("Mobile actions follow observed UI state", "移动端操作遵循实际 UI 状态"),
+        paragraphs: [
+          text(
+            "UI actions now wait for an accessibility revision instead of repeatedly rebuilding full snapshots. Snapshot-bound actions reject a changed UI, clickable ancestors are resolved without an arbitrary depth limit, and native callbacks are released when the Android service stops.",
+            "UI 操作现在等待无障碍修订，不再反复重建完整快照。绑定快照的操作会拒绝已经变化的界面，可点击祖先不再受任意层级限制，Android 服务停止时也会释放原生回调。"
+          )
+        ]
+      },
+      {
+        id: "mcp-refresh",
+        title: text("Long-running MCP sessions stay current", "长时间运行的 MCP 会话保持最新"),
+        paragraphs: [
+          text(
+            "Tool lists, target devices and authorization context refresh while an MCP server remains open. ADC also tolerates object arguments serialized by compatibility bridges and briefly follows queued mobile work so common sub-second actions return one terminal result.",
+            "MCP 服务保持连接时会刷新工具列表、目标设备与授权上下文。ADC 也兼容被桥接层序列化的对象参数，并短暂跟踪已排队的移动端任务，使常见的亚秒级操作直接返回一个终态结果。"
+          )
+        ]
+      },
+      {
+        id: "update-discovery",
+        title: text("Old builds become operationally visible", "旧构建在运维侧清晰可见"),
+        paragraphs: [
+          text(
+            "Desktop Connectors advertise an immutable build ID. The console compares it with the published release and treats legacy nodes without an ID as updateable. Current nodes log one notice for each available build, while interactive CLI checks use a daily cache and detached refresh so JSON, CI and MCP output never waits on the release server.",
+            "桌面 Connector 会上报不可变构建 ID。控制台将其与已发布版本比较，并把缺少 ID 的旧节点视为可更新。当前节点会针对每个可用构建记录一次提示；交互式 CLI 则使用每日缓存与后台刷新，因此 JSON、CI 和 MCP 输出不会等待发布服务器。"
+          )
+        ],
+        code: "adc update --check --json\nadc update\nadc-node logs"
+      }
+    ]
+  },
+  {
     path: "/updates/public-knowledge-base",
     kind: "Product update",
     title: text(

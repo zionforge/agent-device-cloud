@@ -83,7 +83,7 @@ const docsSummaries: Partial<Record<DocsPageId, Message>> = {
   troubleshooting: "Device is offline",
   roadmap: "A clear boundary between available and planned.",
   contributing: "Build and review changes",
-  changelog: "Version 0.1.0"
+  changelog: "Version 0.1.1"
 };
 
 export const documentedTools = [
@@ -2270,6 +2270,37 @@ function Changelog() {
           "记录公开预览与自托管源码版本的行为变化、验证状态和运维操作。"
         )}
       />
+      <Section
+        id="2026-10-11-release"
+        title={copy("2026-10-11 · Connector 0.1.1", "2026-10-11 · Connector 0.1.1")}
+      >
+        <ul className="docs-checklist">
+          <li>
+            {copy(
+              "Android UI actions wait for actual accessibility revisions, reject stale snapshots and release native callbacks cleanly.",
+              "Android UI 操作按真实无障碍修订等待、拒绝过期快照，并正确释放原生回调。"
+            )}
+          </li>
+          <li>
+            {copy(
+              "MCP tool and device snapshots refresh during a long-running session, while common mobile calls can return their quick terminal result directly.",
+              "长时间运行的 MCP 会话可刷新工具与设备快照，常见移动端调用也可直接返回快速完成的终态结果。"
+            )}
+          </li>
+          <li>
+            {copy(
+              "The console, Connector logs and interactive CLI now expose available desktop updates without blocking structured commands on a network check.",
+              "控制台、Connector 日志与交互式 CLI 现在会提示可用桌面端更新，同时不会让结构化命令等待网络检查。"
+            )}
+          </li>
+        </ul>
+        <p className="docs-callout">
+          {copy(
+            "Operator action: publish archives and installers before both manifests, restart the Control Plane, then verify an old node is marked Update available.",
+            "运维操作：先发布归档与安装器，再发布两份清单；重启控制面后，确认旧节点显示「有可用更新」。"
+          )}
+        </p>
+      </Section>
       <Section
         id="2026-09-29-wake"
         title={copy("2026-09-29 · WebSocket task wakeups", "2026-09-29 · WebSocket 任务唤醒")}

@@ -714,6 +714,12 @@ main {
   justify-content: space-between;
   align-items: center;
 }
+.device-states {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
 .device-card h2 {
   margin: 27px 0 0;
   font-size: 21px;

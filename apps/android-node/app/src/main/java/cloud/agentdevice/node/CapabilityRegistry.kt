@@ -44,6 +44,8 @@ class CapabilityRegistry(
     private val nativeProvider: MobileCapabilityProvider =
         AndroidNativeProvider(context, store)
 
+    fun close() = nativeProvider.close()
+
     fun manifest(nodeId: String): JSONObject {
         val now = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
         return JSONObject()
@@ -298,9 +300,13 @@ class CapabilityRegistry(
             .put("roots", JSONArray())
             .put("accessMode", "none")
             .put("platform", "android")
-            .put("nodeVersion", "0.1.0")
+            .put("nodeVersion", appVersion())
             .put("advertisedAt", now)
     }
+
+    @Suppress("DEPRECATION")
+    private fun appVersion(): String =
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "unknown"
 
     fun execute(
         tool: String,
@@ -782,6 +788,32 @@ class CapabilityRegistry(
                     )
             )
             .put("required", JSONArray(listOf("selector", "action")))
+            .put(
+                "allOf",
+                JSONArray().put(
+                    JSONObject()
+                        .put(
+                            "if",
+                            JSONObject()
+                                .put(
+                                    "properties",
+                                    JSONObject().put(
+                                        "action",
+                                        JSONObject().put("const", "set_text")
+                                    )
+                                )
+                                .put("required", JSONArray(listOf("action")))
+                        )
+                        .put("then", JSONObject().put("required", JSONArray(listOf("text"))))
+                        .put(
+                            "else",
+                            JSONObject().put(
+                                "not",
+                                JSONObject().put("required", JSONArray(listOf("text")))
+                            )
+                        )
+                )
+            )
             .put("additionalProperties", false)
 
     private fun uiSelectorSchema(): JSONObject =
@@ -850,6 +882,29 @@ class CapabilityRegistry(
                             .put("maximum", 1000)
                             .put("default", 0)
                     )
+            )
+            .put(
+                "anyOf",
+                JSONArray(
+                    listOf(
+                        "nodeId",
+                        "ref",
+                        "resourceId",
+                        "text",
+                        "contentDescription",
+                        "className",
+                        "packageName",
+                        "role",
+                        "clickable",
+                        "longClickable",
+                        "editable",
+                        "scrollable",
+                        "enabled",
+                        "focused",
+                        "selected",
+                        "checked"
+                    ).map { JSONObject().put("required", JSONArray(listOf(it))) }
+                )
             )
             .put("additionalProperties", false)
 

@@ -10,7 +10,7 @@ import {
 import { AdcClientError, type NodePollResponse } from "./index.ts";
 
 export { AdcClientError } from "./index.ts";
-export type { NodeDispatch, NodePollResponse } from "./index.ts";
+export type { NodeDispatch, NodePollResponse, NodeReleaseUpdate } from "./index.ts";
 import { signNodeRequest } from "./node-auth.ts";
 
 export * from "./node-auth.ts";

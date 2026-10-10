@@ -12,7 +12,8 @@ import {
   assertInvocationCurrent,
   isSideEffectTool,
   relativePathFromRoot,
-  rootForAbsolutePath
+  rootForAbsolutePath,
+  toolArgsJsonSchema
 } from "./index.ts";
 
 function invocation(overrides: Record<string, unknown> = {}) {
@@ -263,6 +264,21 @@ describe("CapabilitySchema", () => {
     ).toMatchObject({ platform: "win32" });
   });
 
+  it("accepts a release build ID and rejects malformed values", () => {
+    const capability = {
+      schemaVersion: "0.1",
+      nodeId: "node_release",
+      tools: [],
+      roots: [],
+      platform: "linux",
+      nodeVersion: "0.1.1",
+      buildId: `sha256:${"a".repeat(64)}`,
+      advertisedAt: "2026-09-24T00:00:00.000Z"
+    };
+    expect(CapabilitySchema.parse(capability).buildId).toBe(capability.buildId);
+    expect(CapabilitySchema.safeParse({ ...capability, buildId: "latest" }).success).toBe(false);
+  });
+
   it("accepts a dynamic MCP tool with its original object schema", () => {
     const capability = CapabilitySchema.parse({
       schemaVersion: "0.1",
@@ -319,5 +335,23 @@ describe("CapabilitySchema", () => {
         ]
       }).success
     ).toBe(false);
+  });
+});
+
+describe("toolArgsJsonSchema", () => {
+  it("publishes UI selector and set_text constraints", () => {
+    const action = toolArgsJsonSchema("ui.action") as any;
+    expect(action.properties.selector.anyOf).toContainEqual({ required: ["text"] });
+    expect(action.allOf[0]).toMatchObject({
+      if: { properties: { action: { const: "set_text" } } },
+      then: { required: ["text"] },
+      else: { not: { required: ["text"] } }
+    });
+
+    const wait = toolArgsJsonSchema("ui.wait") as any;
+    const element = wait.oneOf.find(
+      (variant: any) => variant.properties.condition.const === "element"
+    );
+    expect(element.properties.selector.anyOf).toContainEqual({ required: ["resourceId"] });
   });
 });

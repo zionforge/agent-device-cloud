@@ -1,9 +1,11 @@
 import {
+  ControlPlaneTools,
   ErrorSchema,
   InvocationSchema,
   ResultSchema,
   absolutePathForToolArgs,
   createId,
+  isBuiltinTool,
   isSideEffectTool,
   rootForAbsolutePath,
   type AdcError,
@@ -61,6 +63,19 @@ export interface NodeDispatch {
 export interface NodePollResponse {
   dispatch: NodeDispatch | null;
   maxConcurrency?: number;
+  update?: NodeReleaseUpdate;
+}
+
+export interface NodeReleaseSummary {
+  version: string;
+  runtimeVersion: string;
+  buildId: string;
+}
+
+export interface NodeReleaseUpdate {
+  state: "current" | "update_available";
+  currentBuildId: string | null;
+  latest: NodeReleaseSummary;
 }
 
 export interface ManagedNode {
@@ -79,6 +94,7 @@ export interface ManagedNode {
   createdAt: string;
   deletedAt?: string;
   online: boolean;
+  update?: NodeReleaseUpdate;
 }
 
 export interface AccessSettings {
@@ -185,6 +201,7 @@ export interface NodeInstallation {
   downloadUrl?: string;
   installerUrl?: string;
   windowsInstallerUrl?: string;
+  latest?: NodeReleaseSummary;
 }
 
 export function defaultTarget(context: InvocationContext, tool?: string): Invocation["target"] {
@@ -192,7 +209,7 @@ export function defaultTarget(context: InvocationContext, tool?: string): Invoca
   const nodes = context.nodeIds ?? [];
   if (
     nodes.length === 1 ||
-    (nodes.length > 0 && ["device.list", "device.status"].includes(tool ?? ""))
+    (nodes.length > 0 && tool !== undefined && isBuiltinTool(tool) && ControlPlaneTools.has(tool))
   )
     return { nodeId: nodes[0]! };
   throw new Error(

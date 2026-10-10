@@ -50,6 +50,58 @@ describe("NodeDaemon access reload", () => {
     expect(daemon.capability().roots[0]).not.toHaveProperty("path");
   });
 
+  it("advertises the immutable installed build ID", () => {
+    const buildId = `sha256:${"b".repeat(64)}`;
+    const daemon = new NodeDaemon({
+      controlPlaneUrl: "http://localhost:8787",
+      nodeId: "node_example",
+      privateKey: generateNodeKeyPair().privateKey,
+      roots: [],
+      stateDirectory: "/unused/state",
+      nodeVersion: "0.1.1",
+      buildId
+    });
+    expect(daemon.capability()).toMatchObject({ nodeVersion: "0.1.1", buildId });
+  });
+
+  it("logs each available release once while polling", async () => {
+    const daemon = new NodeDaemon({
+      controlPlaneUrl: "http://localhost:8787",
+      nodeId: "node_example",
+      privateKey: generateNodeKeyPair().privateKey,
+      roots: [],
+      stateDirectory: "/unused/state",
+      nodeVersion: "0.1.0",
+      buildId: `sha256:${"a".repeat(64)}`
+    });
+    vi.spyOn(daemon.api, "poll").mockResolvedValue({
+      dispatch: null,
+      update: {
+        state: "update_available",
+        currentBuildId: `sha256:${"a".repeat(64)}`,
+        latest: {
+          version: "0.1.1",
+          runtimeVersion: "24.21.0",
+          buildId: `sha256:${"b".repeat(64)}`
+        }
+      }
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await daemon.runOnce();
+      await daemon.runOnce();
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(log.mock.calls[0]![0]))).toMatchObject({
+        level: "info",
+        message: "connector update available",
+        latestVersion: "0.1.1",
+        command: "adc update"
+      });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("continues refreshing Providers when local configuration is unchanged", async () => {
     const updateProviders = vi.fn().mockResolvedValue(undefined);
     const providers = {

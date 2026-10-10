@@ -17,7 +17,13 @@ import {
   signOut
 } from "./auth.ts";
 import { isManagementCommand, managementUsage, runManagementCommand } from "./management.ts";
-import { updateClient } from "./update.ts";
+import {
+  UPDATE_NOTICE_COMMAND,
+  cachedUpdateNotice,
+  launchUpdateNoticeRefresh,
+  refreshUpdateNotice,
+  updateClient
+} from "./update.ts";
 
 const usage = `Agent Device Cloud
 Usage:
@@ -31,7 +37,7 @@ Usage:
   adc approval list|approve|deny
   adc project list|create|roots|root-add
   adc tool list|show [TOOL]
-  adc invoke TOOL --args JSON
+  adc invoke TOOL --args JSON [--wait [MILLISECONDS]]
   adc invocation status INVOCATION
   adc task status|result|cancel JOB
   adc artifact get ID
@@ -93,6 +99,24 @@ function exitCode(result: InvocationResult): number {
   return 1;
 }
 
+async function waitForResult(
+  client: Pick<AdcClient, "taskStatus">,
+  initial: InvocationResult,
+  timeoutMs: number
+): Promise<InvocationResult> {
+  const jobId = initial.jobId;
+  if (!jobId || timeoutMs <= 0) return initial;
+  const deadline = Date.now() + timeoutMs;
+  let result = initial;
+  let delay = 50;
+  while (["queued", "running"].includes(result.status) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(delay, deadline - Date.now())));
+    result = await client.taskStatus(jobId);
+    delay = Math.min(delay * 2, 400);
+  }
+  return result;
+}
+
 function print(value: unknown, json: boolean): void {
   if (json) {
     process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -111,11 +135,31 @@ function print(value: unknown, json: boolean): void {
 async function main(): Promise<void> {
   const { positionals, flags } = parseArgs(process.argv.slice(2));
   let [domain, action] = positionals;
+  if (domain === UPDATE_NOTICE_COMMAND) {
+    await refreshUpdateNotice();
+    return;
+  }
   if (domain === "login" || domain === "logout" || domain === "status") {
     action = domain;
     domain = "auth";
   }
   const json = flags.has("json");
+  if (
+    process.stderr.isTTY &&
+    !json &&
+    domain !== "mcp" &&
+    domain !== "update" &&
+    !process.env.CI &&
+    process.env.ADC_NO_UPDATE_NOTIFIER !== "1"
+  ) {
+    const notice = await cachedUpdateNotice();
+    if (notice.update) {
+      process.stderr.write(
+        `ADC ${notice.update.version} is available. Run "adc update" to install it.\n`
+      );
+    }
+    if (notice.stale) launchUpdateNoticeRefresh();
+  }
 
   if (flags.has("version") || domain === "version") {
     console.log(process.env.ADC_BUILD_VERSION ?? "0.1.0-dev");
@@ -298,7 +342,11 @@ async function main(): Promise<void> {
       ...(idempotencyKey ? { idempotencyKey } : {}),
       ...(stringFlag(flags, "timeout") ? { timeoutMs: Number(stringFlag(flags, "timeout")) } : {})
     });
-    const result = await client.invoke(invocation);
+    const wait = flags.get("wait");
+    const waitMs = wait === true ? 1_500 : typeof wait === "string" ? Number(wait) : 0;
+    if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 30_000)
+      throw new Error("--wait must be between 0 and 30000 milliseconds");
+    const result = await waitForResult(client, await client.invoke(invocation), waitMs);
     print(result, json);
     process.exitCode = exitCode(result);
     return;

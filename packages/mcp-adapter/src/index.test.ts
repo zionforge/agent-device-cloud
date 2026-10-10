@@ -310,4 +310,149 @@ describe("McpInvocationAdapter", () => {
       await server.close();
     }
   });
+
+  it("refreshes tools and target enums from the live context", async () => {
+    let context = {
+      accountId: "acct_primary",
+      actorId: "actor_testagent",
+      grantId: "grant_example",
+      nodeIds: ["node_alpha"],
+      toolNodeIds: { "file.read": ["node_alpha"] },
+      rootIds: [],
+      allowedTools: ["file.read" as const]
+    };
+    const server = createMcpServer({
+      client: { invoke: async () => Promise.reject(new Error("not called")) },
+      context,
+      loadContext: async () => context
+    });
+    const client = new Client({ name: "refresh-test", version: "0.1.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const first = (await client.listTools()).tools[0]!;
+      expect(((first.inputSchema.properties!.target as any).properties.nodeId as any).enum).toEqual(
+        ["node_alpha"]
+      );
+      context = {
+        ...context,
+        nodeIds: ["node_beta"],
+        toolNodeIds: { "file.read": ["node_beta"] }
+      };
+      const second = (await client.listTools()).tools[0]!;
+      expect(
+        ((second.inputSchema.properties!.target as any).properties.nodeId as any).enum
+      ).toEqual(["node_beta"]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("normalizes a JSON object string emitted by compatibility MCP bridges", async () => {
+    let captured: Invocation | undefined;
+    const server = createMcpServer({
+      client: {
+        invoke: async (invocation) => {
+          captured = invocation;
+          return ResultSchema.parse({
+            schemaVersion: "0.1",
+            invocationId: invocation.invocationId,
+            attemptId: invocation.attemptId,
+            status: "succeeded",
+            output: { level: 80 }
+          });
+        }
+      },
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: ["node_phone"],
+        toolNodeIds: { "device.battery.get": ["node_phone"] },
+        rootIds: [],
+        allowedTools: ["device.battery.get"]
+      }
+    });
+    const client = new Client({ name: "bridge-compat-test", version: "0.1.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      await client.callTool({
+        name: "device.battery.get",
+        arguments: { args: "{}", target: { nodeId: "node_phone" } }
+      });
+      expect(captured?.args).toEqual({});
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("uses a stable control-plane target for task tools with multiple devices", async () => {
+    let captured: Invocation | undefined;
+    const adapter = new McpInvocationAdapter({
+      client: {
+        invoke: async (invocation) => {
+          captured = invocation;
+          return ResultSchema.parse({
+            schemaVersion: "0.1",
+            invocationId: invocation.invocationId,
+            attemptId: invocation.attemptId,
+            status: "succeeded",
+            output: { task: null }
+          });
+        }
+      },
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: ["node_alpha", "node_beta"],
+        rootIds: []
+      }
+    });
+    await adapter.invoke("task.status", { args: { jobId: "job_example" } });
+    expect(captured?.target).toEqual({ nodeId: "node_alpha" });
+  });
+
+  it("returns quick task completion without a second MCP call", async () => {
+    let checks = 0;
+    const adapter = new McpInvocationAdapter({
+      client: {
+        invoke: async (invocation) =>
+          ResultSchema.parse({
+            schemaVersion: "0.1",
+            invocationId: invocation.invocationId,
+            attemptId: invocation.attemptId,
+            status: "queued",
+            jobId: "job_quick"
+          }),
+        taskStatus: async () => {
+          checks += 1;
+          return ResultSchema.parse({
+            schemaVersion: "0.1",
+            invocationId: "inv_quick",
+            attemptId: "att_quick",
+            status: "succeeded",
+            output: { performed: true }
+          });
+        }
+      },
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: ["node_phone"],
+        rootIds: []
+      },
+      quickWaitMs: 500
+    });
+    await expect(
+      adapter.invoke("ui.inspect", { args: {}, target: { nodeId: "node_phone" } })
+    ).resolves.toMatchObject({ status: "succeeded" });
+    expect(checks).toBe(1);
+  });
 });

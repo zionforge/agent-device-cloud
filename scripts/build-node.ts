@@ -14,6 +14,7 @@ import {
 import { dirname, resolve } from "node:path";
 import { build } from "esbuild";
 import { unzipSync, zipSync, type Zippable } from "fflate";
+import { releaseManifests } from "./release-manifest.ts";
 
 const root = resolve(import.meta.dirname, "..");
 let output = resolve(root, "dist/node");
@@ -238,11 +239,14 @@ try {
         )
         .join("\n")
     );
-  // Publish the installer last; keep prior content-addressed archives usable for cached scripts.
-  await writeFile(
-    resolve(output, "manifest.json"),
-    `${JSON.stringify({ version, runtimeVersion: runtime.version, buildId, archives }, null, 2)}\n`
-  );
+  const { legacy: legacyManifest, current: releaseManifest } = releaseManifests({
+    version,
+    runtimeVersion: runtime.version,
+    buildId,
+    archives
+  });
+  // Legacy clients validate every archive as tar.gz. Keep their manifest
+  // parseable while newer clients use the complete, extensible v2 manifest.
   await writeFile(
     resolve(output, "SHA256SUMS"),
     `${Object.values(archives)
@@ -255,6 +259,13 @@ try {
   const nextWindowsInstaller = resolve(output, ".install.ps1.next");
   await writeFile(nextWindowsInstaller, windowsInstaller);
   await rename(nextWindowsInstaller, resolve(output, "install.ps1"));
+  // Manifests are the release pointers and must become visible only after
+  // every file referenced by this build is ready.
+  await writeFile(
+    resolve(output, "manifest-v2.json"),
+    `${JSON.stringify(releaseManifest, null, 2)}\n`
+  );
+  await writeFile(resolve(output, "manifest.json"), `${JSON.stringify(legacyManifest, null, 2)}\n`);
   console.log(`Ready to publish: ${output}`);
 } finally {
   await rm(staging, { recursive: true, force: true });

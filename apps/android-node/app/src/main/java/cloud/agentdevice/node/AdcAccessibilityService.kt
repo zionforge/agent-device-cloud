@@ -98,10 +98,11 @@ class AdcAccessibilityService : AccessibilityService() {
         } finally {
             while (queue.isNotEmpty()) queue.removeFirst().node.recycle()
         }
+        val windowSnapshot = windowJson()
         val content = JSONObject()
             .put("packageName", packageName ?: JSONObject.NULL)
-            .put("windowCount", windows.size)
-            .put("windows", windowJson())
+            .put("windowCount", windowSnapshot.length())
+            .put("windows", windowSnapshot)
             .put("display", displayJson())
             .put("bounds", boundsJson(rootBounds(nodes)))
             .put("nodes", nodes)
@@ -112,7 +113,8 @@ class AdcAccessibilityService : AccessibilityService() {
                 .put("snapshotId", snapshotId)
                 .put("observedAt", DateTimeFormatter.ISO_INSTANT.format(Instant.now())),
             snapshotId,
-            packageName
+            packageName,
+            revision
         )
     }
 
@@ -138,6 +140,11 @@ class AdcAccessibilityService : AccessibilityService() {
             val target =
                 if (requested == "click" || requested == "long_click") {
                     clickableNode(matched, requested == "long_click")
+                            ?: throw CapabilityException(
+                                "not_found",
+                                "The matched element has no clickable ancestor.",
+                                false
+                            )
                 } else {
                     AccessibilityNodeInfo.obtain(matched)
                 }
@@ -170,6 +177,16 @@ class AdcAccessibilityService : AccessibilityService() {
                     }
                 val performed =
                     onMainThread {
+                        if (
+                            selector.optString("snapshotId").isNotBlank() &&
+                            snapshotRevision.get() != before.revision
+                        ) {
+                            throw CapabilityException(
+                                "conflict",
+                                "The UI changed after the referenced snapshot; inspect it again.",
+                                false
+                            )
+                        }
                         if (arguments == null) {
                             target.performAction(action)
                         } else {
@@ -367,15 +384,18 @@ class AdcAccessibilityService : AccessibilityService() {
     private fun clickableNode(
         source: AccessibilityNodeInfo,
         longClick: Boolean
-    ): AccessibilityNodeInfo {
+    ): AccessibilityNodeInfo? {
         var current = AccessibilityNodeInfo.obtain(source)
-        repeat(12) {
+        while (true) {
             if (if (longClick) current.isLongClickable else current.isClickable) return current
-            val parent = current.parent ?: return current
+            val parent = current.parent
+            if (parent == null) {
+                current.recycle()
+                return null
+            }
             current.recycle()
             current = parent
         }
-        return current
     }
 
     private fun nodeJson(
@@ -515,22 +535,19 @@ class AdcAccessibilityService : AccessibilityService() {
     }
 
     private fun waitForChangedSnapshot(before: UiSnapshot, waitMs: Long): UiSnapshot {
-        var latest = before
         val deadline = SystemClock.elapsedRealtime() + waitMs
-        do {
-            if (waitMs > 0L) {
-                val remaining = deadline - SystemClock.elapsedRealtime()
-                if (remaining > 0L) Thread.sleep(minOf(50L, remaining))
-            }
-            latest =
-                try {
-                    snapshot(DEFAULT_MAX_DEPTH, DEFAULT_MAX_NODES)
-                } catch (_: CapabilityException) {
-                    latest
-                }
-            if (latest.id != before.id) return latest
-        } while (SystemClock.elapsedRealtime() < deadline)
-        return latest
+        while (
+            snapshotRevision.get() == before.revision &&
+            SystemClock.elapsedRealtime() < deadline
+        ) {
+            val remaining = deadline - SystemClock.elapsedRealtime()
+            if (remaining > 0L) Thread.sleep(minOf(50L, remaining))
+        }
+        return try {
+            snapshot(DEFAULT_MAX_DEPTH, DEFAULT_MAX_NODES)
+        } catch (_: CapabilityException) {
+            before
+        }
     }
 
     private fun currentPackage(): String? {
@@ -555,23 +572,30 @@ class AdcAccessibilityService : AccessibilityService() {
             .put("refreshRateHz", display?.refreshRate?.toDouble() ?: JSONObject.NULL)
     }
 
-    private fun windowJson(): JSONArray =
-        JSONArray().apply {
-            windows.forEach { window ->
-                val bounds = Rect()
-                window.getBoundsInScreen(bounds)
-                put(
-                    JSONObject()
-                        .put("id", window.id)
-                        .put("type", windowType(window.type))
-                        .put("layer", window.layer)
-                        .put("active", window.isActive)
-                        .put("focused", window.isFocused)
-                        .put("title", window.title?.toString() ?: JSONObject.NULL)
-                        .put("bounds", boundsJson(bounds))
-                )
+    private fun windowJson(): JSONArray {
+        val currentWindows = windows
+        return try {
+            JSONArray().apply {
+                currentWindows.forEach { window ->
+                    val bounds = Rect()
+                    window.getBoundsInScreen(bounds)
+                    put(
+                        JSONObject()
+                            .put("id", window.id)
+                            .put("type", windowType(window.type))
+                            .put("layer", window.layer)
+                            .put("active", window.isActive)
+                            .put("focused", window.isFocused)
+                            .put("title", window.title?.toString() ?: JSONObject.NULL)
+                            .put("bounds", boundsJson(bounds))
+                    )
+                }
             }
+        } finally {
+            @Suppress("DEPRECATION")
+            currentWindows.forEach { it.recycle() }
         }
+    }
 
     private fun rootBounds(nodes: JSONArray): Rect {
         if (nodes.length() == 0) return Rect()
@@ -594,6 +618,7 @@ class AdcAccessibilityService : AccessibilityService() {
     private fun roleOf(node: AccessibilityNodeInfo): String {
         val className = node.className?.toString().orEmpty()
         return when {
+            node.collectionItemInfo != null -> "list_item"
             className.endsWith("Button") -> "button"
             className.endsWith("CheckBox") -> "checkbox"
             className.endsWith("Switch") -> "switch"
@@ -603,7 +628,6 @@ class AdcAccessibilityService : AccessibilityService() {
             className.endsWith("RecyclerView") || className.endsWith("ListView") -> "list"
             className.endsWith("WebView") -> "web_view"
             className.endsWith("ViewGroup") || className.endsWith("Layout") -> "container"
-            node.collectionItemInfo != null -> "list_item"
             else -> "unknown"
         }
     }
@@ -660,7 +684,8 @@ class AdcAccessibilityService : AccessibilityService() {
     private data class UiSnapshot(
         val json: JSONObject,
         val id: String,
-        val packageName: String?
+        val packageName: String?,
+        val revision: Long
     )
 
     companion object {

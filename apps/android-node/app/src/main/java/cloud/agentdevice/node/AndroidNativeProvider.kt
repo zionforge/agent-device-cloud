@@ -73,6 +73,17 @@ class AndroidNativeProvider(
         }
     }
 
+    override fun close() {
+        if (!torchCallbackRegistered.compareAndSet(true, false)) return
+        try {
+            cameraManager.unregisterTorchCallback(torchCallback)
+        } catch (_: Exception) {
+            // The camera service may already be unavailable during shutdown.
+        } finally {
+            torchStates.clear()
+        }
+    }
+
     override fun descriptors(observedAt: String): List<JSONObject> =
         listOf(
             descriptor(
@@ -377,7 +388,7 @@ class AndroidNativeProvider(
             SystemClock.elapsedRealtime() < deadline
         ) {
             if (cancelled()) {
-                throw CapabilityException("cancelled", "Invocation was cancelled.", false)
+                break
             }
             Thread.sleep(100L)
             foreground = AdcAccessibilityService.currentPackage()

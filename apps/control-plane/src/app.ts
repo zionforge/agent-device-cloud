@@ -57,8 +57,10 @@ import {
 } from "./resource-management.ts";
 import {
   distributionInfo,
+  latestNodeRelease,
   registerDistributionRoutes,
-  type NodeDistribution
+  type NodeDistribution,
+  type NodeReleaseSummary
 } from "./distribution.ts";
 import { NodeWakeHub } from "./node-wake.ts";
 import { PublicSite, type HostedAnalyticsOptions } from "./public-site.ts";
@@ -78,6 +80,14 @@ export interface ControlPlaneOptions {
   corsOrigins?: string[] | "*";
   analytics?: HostedAnalyticsOptions;
   assetStore?: AssetStore;
+}
+
+function nodeReleaseUpdate(buildId: string | undefined, latest: NodeReleaseSummary) {
+  return {
+    state: buildId === latest.buildId ? ("current" as const) : ("update_available" as const),
+    currentBuildId: buildId ?? null,
+    latest
+  };
 }
 
 function invocationPath(invocation: Invocation, node: NodeRecord | undefined): string | undefined {
@@ -678,21 +688,29 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     return { nodeId: paired.node.nodeId, accountId: paired.node.accountId };
   });
 
-  app.get("/api/v1/nodes", { preHandler: requireOwner }, async (request) => ({
-    nodes: (await options.store.listNodes(accountOf(request))).map((node) => ({
-      ...node,
-      accessPolicy: {
-        ...defaultNodeAccessPolicy(),
-        ...node.accessPolicy,
-        maxConcurrency: nodeMaxConcurrency(node)
-      },
-      effectiveCapability: effectiveCapability(node),
-      online:
-        node.status === "active" &&
-        !!node.lastSeenAt &&
-        now().getTime() - Date.parse(node.lastSeenAt) <= presenceTtlMs
-    }))
-  }));
+  app.get("/api/v1/nodes", { preHandler: requireOwner }, async (request) => {
+    const release = await latestNodeRelease(options.nodeDistribution);
+    return {
+      nodes: (await options.store.listNodes(accountOf(request))).map((node) => ({
+        ...node,
+        accessPolicy: {
+          ...defaultNodeAccessPolicy(),
+          ...node.accessPolicy,
+          maxConcurrency: nodeMaxConcurrency(node)
+        },
+        effectiveCapability: effectiveCapability(node),
+        online:
+          node.status === "active" &&
+          !!node.lastSeenAt &&
+          now().getTime() - Date.parse(node.lastSeenAt) <= presenceTtlMs,
+        ...(release && node.platform !== "android"
+          ? {
+              update: nodeReleaseUpdate(node.capability?.buildId, release)
+            }
+          : {})
+      }))
+    };
+  });
 
   app.post("/api/v1/nodes/:nodeId/revoke", { preHandler: requireOwner }, async (request, reply) => {
     const { nodeId } = z.object({ nodeId: z.string() }).parse(request.params);
@@ -943,7 +961,15 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       dispatch = await options.store.claim(nodeId, now(), leaseMs);
     }
     pollCounter.inc({ outcome: dispatch ? "dispatched" : "idle" });
-    return { dispatch: dispatch ?? null, maxConcurrency };
+    const release =
+      body.capability.platform === "android"
+        ? undefined
+        : await latestNodeRelease(options.nodeDistribution);
+    return {
+      dispatch: dispatch ?? null,
+      maxConcurrency,
+      ...(release ? { update: nodeReleaseUpdate(body.capability.buildId, release) } : {})
+    };
   });
 
   app.post("/api/v1/nodes/:nodeId/ack", { preHandler: requireNode }, async (request, reply) => {
@@ -1725,9 +1751,10 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
   });
 
   registerDistributionRoutes(app, options.nodeDistribution);
-  app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () =>
-    distributionInfo(options.nodeDistribution)
-  );
+  app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => ({
+    ...distributionInfo(options.nodeDistribution),
+    latest: await latestNodeRelease(options.nodeDistribution)
+  }));
 
   if (options.consoleDirectory) {
     const publicSite = await PublicSite.load(options.consoleDirectory);

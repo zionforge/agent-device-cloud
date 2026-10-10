@@ -585,6 +585,9 @@ export const zh = {
   "Tool is denied": "工具调用被拒绝",
   "Check the Agent tool list, device policy, writable folder and local access mode.":
     "检查 Agent 工具列表、设备策略、目录写权限和本地访问模式。",
+  "Update available": "有可用更新",
+  "Latest version: {version}": "最新版本：{version}",
+  "Version 0.1.1": "版本 0.1.1",
   "Version 0.1.0": "版本 0.1.0",
   "Initial pre-release": "首个预发布版本",
   "Account isolation, device pairing, direct grants, approvals, receipts, MCP OAuth, CLI, Skill and installable connectors.":

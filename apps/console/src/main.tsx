@@ -73,6 +73,11 @@ export interface NodeRecord {
     maxConcurrency: number;
   };
   effectiveCapability?: NodeRecord["capability"];
+  update?: {
+    state: "current" | "update_available";
+    currentBuildId: string | null;
+    latest: { version: string; runtimeVersion: string; buildId: string };
+  };
   capability?: {
     tools: {
       name: string;
@@ -88,6 +93,7 @@ export interface NodeRecord {
     }[];
     roots: { rootId: string; path?: string; label: string; writable: boolean }[];
     nodeVersion: string;
+    buildId?: string;
     accessMode?: "none" | "selected" | "home" | "full";
   };
 }
@@ -651,11 +657,23 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
               ) : (
                 <Laptop size={24} strokeWidth={1.4} />
               )}
-              <span
-                className={`state ${node.status === "revoked" ? "revoked" : node.online ? "active" : "offline"}`}
-              >
-                {term(node.status === "revoked" ? "revoked" : node.online ? "online" : "offline")}
-              </span>
+              <div className="device-states">
+                {node.update?.state === "update_available" ? (
+                  <span
+                    className="state pending"
+                    title={t("Latest version: {version}", {
+                      version: node.update.latest.version
+                    })}
+                  >
+                    {t("Update available")}
+                  </span>
+                ) : null}
+                <span
+                  className={`state ${node.status === "revoked" ? "revoked" : node.online ? "active" : "offline"}`}
+                >
+                  {term(node.status === "revoked" ? "revoked" : node.online ? "online" : "offline")}
+                </span>
+              </div>
             </div>
             <h2>{node.label}</h2>
             <p className="hint">

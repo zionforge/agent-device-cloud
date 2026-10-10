@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   AbsolutePathSchema,
+  ExecutionTools,
   PolicyDecisionSchema,
   ReadOnlyTools,
   ToolIdSchema,
@@ -258,10 +259,7 @@ export function requiresApproval(
   if (policy === undefined) return profile === "approve-required" && isSideEffectTool(tool);
   if (policy === "always") return true;
   if (policy === "writes") return isSideEffectTool(tool);
-  if (policy === "execute")
-    return (
-      !isBuiltinTool(tool) || ["shell.exec", "command.template.run", "test.run"].includes(tool)
-    );
+  if (policy === "execute") return !isBuiltinTool(tool) || ExecutionTools.has(tool);
   return false;
 }
 

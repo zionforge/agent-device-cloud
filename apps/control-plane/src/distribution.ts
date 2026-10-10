@@ -1,13 +1,27 @@
 import { createReadStream, existsSync } from "node:fs";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
 
 export interface NodeDistribution {
   directory: string;
   publicUrl: string;
   downloadUrl?: string;
 }
+
+const ReleaseSummarySchema = z
+  .object({
+    version: z.string().min(1),
+    runtimeVersion: z.string().min(1),
+    buildId: z.string().regex(/^sha256:[a-f0-9]{64}$/)
+  })
+  .passthrough();
+export type NodeReleaseSummary = z.infer<typeof ReleaseSummarySchema>;
+const releaseCache = new Map<
+  string,
+  { expiresAt: number; value: NodeReleaseSummary | undefined }
+>();
 
 export function distributionInfo(distribution?: NodeDistribution) {
   if (!distribution) return { available: false };
@@ -42,11 +56,54 @@ export function distributionInfo(distribution?: NodeDistribution) {
   };
 }
 
+export async function latestNodeRelease(
+  distribution?: NodeDistribution
+): Promise<NodeReleaseSummary | undefined> {
+  if (!distribution) return;
+  const info = distributionInfo(distribution);
+  const cacheKey = distribution.downloadUrl ?? resolve(distribution.directory);
+  const cached = releaseCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  let value: NodeReleaseSummary | undefined;
+  try {
+    if (distribution.downloadUrl) {
+      for (const file of ["manifest-v2.json", "manifest.json"]) {
+        const response = await fetch(`${info.downloadUrl}/${file}`, {
+          signal: AbortSignal.timeout(3_000)
+        });
+        if (response.status === 404) continue;
+        if (!response.ok) break;
+        const body = await response.text();
+        if (Buffer.byteLength(body) > 1024 * 1024) break;
+        value = ReleaseSummarySchema.parse(JSON.parse(body));
+        break;
+      }
+    } else {
+      for (const file of ["manifest-v2.json", "manifest.json"]) {
+        try {
+          value = ReleaseSummarySchema.parse(
+            JSON.parse(await readFile(resolve(distribution.directory, file), "utf8"))
+          );
+          break;
+        } catch {
+          // Try the compatible manifest name.
+        }
+      }
+    }
+  } catch {
+    value = undefined;
+  }
+  releaseCache.set(cacheKey, { expiresAt: Date.now() + 60_000, value });
+  return value;
+}
+
 export function registerDistributionRoutes(app: FastifyInstance, distribution?: NodeDistribution) {
   distributionInfo(distribution); // Validate configured URLs before accepting requests.
   async function serve(file: string, reply: FastifyReply) {
     const allowed =
-      ["install.sh", "install.ps1", "manifest.json", "SHA256SUMS"].includes(file) ||
+      ["install.sh", "install.ps1", "manifest.json", "manifest-v2.json", "SHA256SUMS"].includes(
+        file
+      ) ||
       /^adc-[a-zA-Z0-9._-]+-(?:(?:darwin|linux)-(?:arm64|x64)|win32-x64)-[a-f0-9]{16}\.(?:tar\.gz|zip)$/.test(
         file
       );

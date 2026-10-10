@@ -12,4 +12,6 @@ interface MobileCapabilityProvider {
         args: JSONObject,
         cancelled: () -> Boolean
     ): MobileCapabilityResult
+
+    fun close() = Unit
 }

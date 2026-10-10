@@ -81,6 +81,7 @@ class NodeService : Service() {
     override fun onDestroy() {
         running.set(false)
         ScreenCaptureSession.stop()
+        registry.close()
         executor.shutdownNow()
         leaseExecutor.shutdownNow()
         super.onDestroy()

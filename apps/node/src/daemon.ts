@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { AdcClientError, NodeApiClient, type NodeDispatch } from "@adc/client/node";
+import {
+  AdcClientError,
+  NodeApiClient,
+  type NodeDispatch,
+  type NodeReleaseUpdate
+} from "@adc/client/node";
 import {
   CapabilitySchema,
   absolutePathForToolArgs,
@@ -57,6 +62,7 @@ export interface NodeDaemonOptions {
   templates?: CommandTemplate[];
   stateDirectory: string;
   nodeVersion?: string;
+  buildId?: string;
   platform?: NodePlatform;
   pollIntervalMs?: number;
   leaseRenewIntervalMs?: number;
@@ -79,6 +85,7 @@ export class NodeDaemon {
   private accessInitialized = false;
   private reloadQueue: Promise<boolean> = Promise.resolve(false);
   private maxConcurrency = DEFAULT_MAX_CONCURRENCY;
+  private announcedUpdateBuildId: string | undefined;
 
   constructor(private readonly options: NodeDaemonOptions) {
     this.access = normalizeAccess({
@@ -195,8 +202,29 @@ export class NodeDaemon {
       })),
       platform,
       nodeVersion: this.options.nodeVersion ?? "0.1.0",
+      ...(this.options.buildId ? { buildId: this.options.buildId } : {}),
       advertisedAt: now.toISOString()
     });
+  }
+
+  private announceUpdate(update: NodeReleaseUpdate | undefined): void {
+    if (
+      update?.state !== "update_available" ||
+      update.latest.buildId === this.announcedUpdateBuildId
+    ) {
+      return;
+    }
+    this.announcedUpdateBuildId = update.latest.buildId;
+    console.error(
+      JSON.stringify({
+        level: "info",
+        component: "adc-node",
+        message: "connector update available",
+        currentVersion: this.options.nodeVersion ?? "0.1.0",
+        latestVersion: update.latest.version,
+        command: "adc update"
+      })
+    );
   }
 
   private async pollForDispatch(
@@ -205,6 +233,7 @@ export class NodeDaemon {
   ): Promise<NodeDispatch | undefined> {
     await this.reloadAccess();
     const response = await this.api.poll(this.capability(), { activeTaskCount, claim });
+    this.announceUpdate(response.update);
     const configuredConcurrency = response.maxConcurrency;
     if (
       typeof configuredConcurrency === "number" &&
