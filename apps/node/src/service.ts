@@ -81,6 +81,15 @@ function powershellLiteral(value: string): string {
   return `'${value.replaceAll("'", "''")}'`;
 }
 
+export function windowsUserPathRemovalCommand(bin: string): string {
+  return [
+    `$target=${powershellLiteral(bin)}`,
+    "$current=[Environment]::GetEnvironmentVariable('Path','User')",
+    "if($null -ne $current){$entries=@($current -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not [string]::Equals($_,$target,[StringComparison]::OrdinalIgnoreCase) }); [Environment]::SetEnvironmentVariable('Path',($entries -join ';'),'User')}",
+    "try { Add-Type -Namespace AdcNative -Name PathBroadcast -MemberDefinition '[DllImport(\"user32.dll\", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);' -ErrorAction Stop; $result=[UIntPtr]::Zero; [AdcNative.PathBroadcast]::SendMessageTimeout([IntPtr]0xFFFF,0x1A,[UIntPtr]::Zero,'Environment',2,5000,[ref]$result) | Out-Null } catch {}"
+  ].join("; ");
+}
+
 async function command(binary: string, args: string[]) {
   try {
     return await exec(binary, args, {
@@ -407,6 +416,15 @@ export async function uninstall(): Promise<void> {
       await command("schtasks.exe", ["/Delete", "/TN", taskName, "/F"]);
     await rm(serviceFile, { force: true });
     await rm(windowsRunner, { force: true });
+    if (existsSync(resolve(paths.install, ".adc-managed-user-path"))) {
+      await command(powershellExecutable, [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        windowsUserPathRemovalCommand(paths.bin)
+      ]);
+    }
   } else if (existsSync(serviceFile)) {
     if (process.platform === "linux") await command("systemctl", ["--user", "disable", unit]);
     await rm(serviceFile);

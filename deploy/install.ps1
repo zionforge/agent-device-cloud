@@ -271,6 +271,7 @@ try {
   if ($UserEntries -notcontains $BinDir) {
     try {
       [Environment]::SetEnvironmentVariable("Path", (($UserEntries + $BinDir) -join ";"), "User")
+      Write-Utf8 (Join-Path $InstallDir ".adc-managed-user-path") "$BinDir`n"
       Add-Type -Namespace AdcNative -Name PathBroadcast -MemberDefinition @"
 [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);

@@ -40,8 +40,8 @@ Default locations:
 | Receipts and temporary execution data | `%LOCALAPPDATA%\AgentDeviceCloud\config\state`         |
 | Connector log                         | `%LOCALAPPDATA%\AgentDeviceCloud\config\logs\node.log` |
 
-The installer prints the launcher directory when it is not already on `PATH`. Run commands by full
-path until that directory has been added to the user `PATH`.
+The installer adds the launcher directory to the user `PATH` when needed. Open a new terminal before
+running `adc` or `adc-node`; uninstall removes the entry only when ADC added it.
 
 ## Path and shell contract
 

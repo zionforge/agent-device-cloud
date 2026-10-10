@@ -203,6 +203,7 @@ describe("released device installer over HTTP", () => {
     const windowsInstallerSource = await windowsInstaller.text();
     expect(windowsInstallerSource).toContain("Expand-Archive");
     expect(windowsInstallerSource).toContain("REM ADC managed launcher");
+    expect(windowsInstallerSource).toContain(".adc-managed-user-path");
     expect(windowsInstallerSource).not.toContain("@ADC_");
     const windowsArchive = await fetch(
       `${origin}/downloads/node/adc-0.1.0-win32-x64-0123456789abcdef.zip`

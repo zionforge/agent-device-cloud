@@ -755,6 +755,14 @@ function Architecture() {
   );
 }
 
+export const windowsInstallExample = [
+  "[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12",
+  "$p=Join-Path $env:TEMP 'adc-install.ps1'",
+  "Invoke-WebRequest -UseBasicParsing -Uri 'https://devices.example.com/install.ps1' -OutFile $p",
+  '& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $p `',
+  "  -Url 'https://devices.example.com' -Code 'PAIRING_CODE'"
+].join("\n");
+
 function Connector() {
   const { t } = useI18n();
   const copy = useDocCopy();
@@ -771,13 +779,7 @@ function Connector() {
         {`curl -fsSL https://devices.example.com/install.sh | sh -s -- \\
   --url https://devices.example.com --code 'PAIRING_CODE'`}
       </CodeBlock>
-      <CodeBlock label="Windows PowerShell">
-        {`[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-$p=Join-Path $env:TEMP 'adc-install.ps1'
-Invoke-WebRequest -UseBasicParsing -Uri 'https://devices.example.com/install.ps1' -OutFile $p
-& "$env:SystemRoot\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $p \\\`
-  -Url 'https://devices.example.com' -Code 'PAIRING_CODE'`}
-      </CodeBlock>
+      <CodeBlock label="Windows PowerShell">{windowsInstallExample}</CodeBlock>
       <Section id="pairing-sequence" title={copy("What pairing creates", "配对会创建什么")}>
         <ol className="docs-steps docs-steps-compact">
           <li>

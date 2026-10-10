@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { windowsTaskDefinition } from "./service.ts";
+import { windowsTaskDefinition, windowsUserPathRemovalCommand } from "./service.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -94,5 +94,13 @@ describe("Windows task startup", () => {
     expect(xml).toContain("<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>");
     expect(xml).toContain("ADC &amp; Tools");
     expect(xml).toContain("<UserId>S-1-5-21-1234</UserId>");
+  });
+
+  it("removes only the managed bin directory from the user PATH", () => {
+    const command = windowsUserPathRemovalCommand("C:\\Users\\owner\\ADC ' Tools\\bin");
+    expect(command).toContain("$target='C:\\Users\\owner\\ADC '' Tools\\bin'");
+    expect(command).toContain("[StringComparison]::OrdinalIgnoreCase");
+    expect(command).toContain("SetEnvironmentVariable('Path'");
+    expect(command).toContain("SendMessageTimeout");
   });
 });

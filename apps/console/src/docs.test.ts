@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ToolNameSchema } from "../../../packages/protocol/src/index.ts";
 import { catalogs, zh } from "./i18n.tsx";
-import { documentedTools, docsPageId, docsPages } from "./docs.tsx";
+import { documentedTools, docsPageId, docsPages, windowsInstallExample } from "./docs.tsx";
 
 describe("documentation navigation", () => {
   it("resolves every documented route and rejects unknown pages", () => {
@@ -42,5 +42,10 @@ describe("documentation navigation", () => {
         placeholders(catalogs["zh-CN"][key]).sort()
       );
     }
+  });
+
+  it("renders a valid PowerShell line continuation in the Windows install example", () => {
+    expect(windowsInstallExample).toContain("-File $p `\n  -Url");
+    expect(windowsInstallExample).not.toContain("-File $p \\`");
   });
 });
