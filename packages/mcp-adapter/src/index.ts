@@ -29,6 +29,7 @@ export interface McpAdapterOptions {
   defaultTarget?: { nodeId: string } | { projectId: string; affinity?: string };
   allowedTools?: ToolId[];
   quickWaitMs?: number;
+  contextRefreshIntervalMs?: number;
 }
 
 interface AdapterInput {
@@ -350,6 +351,23 @@ export function createMcpServer(options: McpAdapterOptions): Server {
       );
     }
   });
+  const refreshIntervalMs = options.contextRefreshIntervalMs ?? 5_000;
+  let proactiveRefresh: Promise<unknown> | undefined;
+  const refreshTimer =
+    options.loadContext && refreshIntervalMs > 0
+      ? setInterval(() => {
+          if (proactiveRefresh) return;
+          proactiveRefresh = refresh(true)
+            .catch(() => {})
+            .finally(() => {
+              proactiveRefresh = undefined;
+            });
+        }, refreshIntervalMs)
+      : undefined;
+  refreshTimer?.unref();
+  server.onclose = () => {
+    if (refreshTimer) clearInterval(refreshTimer);
+  };
   return server;
 }
 

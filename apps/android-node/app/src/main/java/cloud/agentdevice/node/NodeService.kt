@@ -15,6 +15,7 @@ import org.json.JSONObject
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -28,6 +29,9 @@ class NodeService : Service() {
     private lateinit var protocol: NodeProtocol
     private lateinit var registry: CapabilityRegistry
     private lateinit var execution: MobileExecutionEngine
+    private val wakeSignals = ArrayBlockingQueue<Unit>(1)
+    private var wakeChannel: NodeWakeChannel? = null
+    private var wakeNodeId: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,6 +84,8 @@ class NodeService : Service() {
 
     override fun onDestroy() {
         running.set(false)
+        wakeChannel?.close()
+        wakeChannel = null
         ScreenCaptureSession.stop()
         registry.close()
         executor.shutdownNow()
@@ -99,6 +105,7 @@ class NodeService : Service() {
 
     private fun pollLoop() {
         var backoffMs = 2_000L
+        var pollImmediately = true
         while (running.get()) {
             val config = store.config()
             if (config == null) {
@@ -106,15 +113,30 @@ class NodeService : Service() {
                 stopSelf()
                 return
             }
+            val wake = ensureWakeChannel(config)
             try {
-                val response = protocol.poll(config, registry.manifest(config.nodeId))
+                if (!wake.connected && pollImmediately && !waitForWake(WS_CONNECT_GRACE_MS)) return
+                if (wake.connected && !pollImmediately && !waitForWake(DURABLE_POLL_MS)) return
+                if (pollImmediately) wakeSignals.clear()
+                val response = protocol.poll(
+                    config,
+                    registry.manifest(config.nodeId),
+                    waitForWake = !wake.connected
+                )
                 val now = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
                 store.setConnectionState(now, null)
                 publishStatus(true, null)
                 updateNotification("Connected · ${config.label}")
                 backoffMs = 2_000L
-                response.optJSONObject("dispatch")?.let { execute(config, it) }
-                if (!sleep(if (response.isNull("dispatch")) POLL_INTERVAL_MS else 250L)) return
+                val dispatch = response.optJSONObject("dispatch")
+                dispatch?.let { execute(config, it) }
+                pollImmediately = dispatch != null
+                if (
+                    dispatch == null &&
+                    !wake.connected &&
+                    !response.optBoolean("longPoll") &&
+                    !waitForWake(POLL_INTERVAL_MS)
+                ) return
             } catch (error: Exception) {
                 val message =
                     when (error) {
@@ -128,11 +150,37 @@ class NodeService : Service() {
                     stopSelf()
                     return
                 }
-                if (!sleep(backoffMs)) return
+                pollImmediately = true
+                if (!waitForWake(backoffMs)) return
                 backoffMs = min(backoffMs * 2, 60_000L)
             }
         }
     }
+
+    private fun ensureWakeChannel(config: NodeConfig): NodeWakeChannel {
+        val existing = wakeChannel
+        if (existing != null && wakeNodeId == config.nodeId) return existing
+        existing?.close()
+        wakeSignals.clear()
+        return NodeWakeChannel(
+            requestProvider = { protocol.wakeRequest(config) },
+            expectedNodeId = config.nodeId,
+            onWake = { wakeSignals.offer(Unit) },
+            onConnectionChanged = { wakeSignals.offer(Unit) }
+        ).also {
+            wakeNodeId = config.nodeId
+            wakeChannel = it
+            it.start()
+        }
+    }
+
+    private fun waitForWake(durationMs: Long): Boolean =
+        try {
+            wakeSignals.poll(durationMs, TimeUnit.MILLISECONDS)
+            running.get()
+        } catch (_: InterruptedException) {
+            false
+        }
 
     private fun execute(config: NodeConfig, dispatch: JSONObject) {
         val dispatchId = dispatch.getString("dispatchId")
@@ -188,16 +236,10 @@ class NodeService : Service() {
         }
     }
 
-    private fun sleep(durationMs: Long): Boolean =
-        try {
-            Thread.sleep(durationMs)
-            running.get()
-        } catch (_: InterruptedException) {
-            false
-        }
-
     private fun stopNode() {
         running.set(false)
+        wakeChannel?.close()
+        wakeChannel = null
         ScreenCaptureSession.stop(this)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -281,9 +323,9 @@ class NodeService : Service() {
         private const val EXTRA_SCREEN_CAPTURE_DATA = "screenCaptureData"
         private const val SERVICE_CHANNEL = "adc-node-service"
         private const val NOTIFICATION_ID = 4101
-        // Android has no push wake channel yet. Keep dispatch latency within
-        // the CLI/MCP quick-wait window while the foreground Node is running.
         private const val POLL_INTERVAL_MS = 1_000L
+        private const val WS_CONNECT_GRACE_MS = 500L
+        private const val DURABLE_POLL_MS = 30_000L
         private const val LEASE_RENEW_INTERVAL_MS = 8_000L
 
         fun start(context: Context) {

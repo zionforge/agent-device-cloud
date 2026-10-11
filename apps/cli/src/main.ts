@@ -37,7 +37,8 @@ Usage:
   adc approval list|approve|deny
   adc project list|create|roots|root-add
   adc tool list|show [TOOL]
-  adc invoke TOOL --args JSON [--wait [MILLISECONDS]]
+  adc invoke TOOL --args JSON [--node DEVICE] [--wait [MILLISECONDS]]
+             [--idempotency-key KEY]
   adc invocation status INVOCATION
   adc task status|result|cancel JOB
   adc artifact get ID

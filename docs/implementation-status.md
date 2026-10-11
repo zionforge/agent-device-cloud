@@ -45,6 +45,8 @@
   navigation
 - Android in-App version discovery, localized release notes and device-owner-confirmed updates with
   same-origin download, size/hash, package metadata and installed-signing-certificate verification
+- Authenticated Android WebSocket wake with long-poll and durable-poll fallback removes the
+  one-second dispatch floor; MCP proactively refreshes live tools and target enums after changes
 - Per-device Android capability switches with high-risk screen capture and UI control disabled by
   default, MediaProjection consent and Accessibility service enforcement
 - Content-addressed PNG artifact storage with PostgreSQL metadata and hash verification
@@ -87,7 +89,7 @@
 
 ## Verified
 
-- 171 passing unit tests across 29 files; one opt-in macOS service test remains environment-gated
+- 176 passing unit tests across 29 files; one opt-in macOS service test remains environment-gated
 - Real PostgreSQL migration, concurrent `SKIP LOCKED` claims and restart persistence
 - Pairing/replay/revoke behavior
 - Symlink escape, secret redaction, command denial, timeout/cancel and output limits

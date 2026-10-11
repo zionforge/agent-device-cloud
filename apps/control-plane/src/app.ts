@@ -932,7 +932,8 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       .object({
         capability: CapabilitySchema,
         activeTaskCount: z.number().int().min(0).max(MAX_NODE_MAX_CONCURRENCY).default(0),
-        claim: z.boolean().default(true)
+        claim: z.boolean().default(true),
+        waitMs: z.number().int().min(0).max(25_000).default(0)
       })
       .strict()
       .parse(request.body);
@@ -947,23 +948,24 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     const maxConcurrency = node
       ? nodeMaxConcurrency(node)
       : defaultNodeAccessPolicy().maxConcurrency;
-    let dispatch =
-      body.claim && body.activeTaskCount < maxConcurrency
-        ? await options.store.claim(nodeId, now(), leaseMs)
-        : undefined;
-    // Re-evaluate queued work after policy changes. A bounded loop avoids one
-    // revoked grant indefinitely blocking unrelated work on the same device.
-    for (let checked = 0; dispatch && !(await dispatchAuthorized(dispatch)); checked++) {
-      const cancelled = await options.store.requestCancel(dispatch.dispatchId, now());
-      if (cancelled?.status === "cancel_requested") {
-        dispatch = cancelled;
-        break;
+    const canClaim = body.claim && body.activeTaskCount < maxConcurrency;
+    const claimAuthorized = async () => {
+      let candidate = canClaim ? await options.store.claim(nodeId, now(), leaseMs) : undefined;
+      // Re-evaluate queued work after policy changes. A bounded loop avoids one
+      // revoked grant indefinitely blocking unrelated work on the same device.
+      for (let checked = 0; candidate && !(await dispatchAuthorized(candidate)); checked++) {
+        const cancelled = await options.store.requestCancel(candidate.dispatchId, now());
+        if (cancelled?.status === "cancel_requested") return cancelled;
+        if (checked >= 19) return undefined;
+        candidate = await options.store.claim(nodeId, now(), leaseMs);
       }
-      if (checked >= 19) {
-        dispatch = undefined;
-        break;
-      }
-      dispatch = await options.store.claim(nodeId, now(), leaseMs);
+      return candidate;
+    };
+    const wakeSequence = wakeHub.wakeSequence(nodeId);
+    let dispatch = await claimAuthorized();
+    if (!dispatch && canClaim && body.waitMs > 0) {
+      await wakeHub.wait(nodeId, wakeSequence, body.waitMs);
+      dispatch = await claimAuthorized();
     }
     pollCounter.inc({ outcome: dispatch ? "dispatched" : "idle" });
     const release =
@@ -973,6 +975,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     return {
       dispatch: dispatch ?? null,
       maxConcurrency,
+      ...(body.waitMs > 0 ? { longPoll: true } : {}),
       ...(release ? { update: nodeReleaseUpdate(body.capability.buildId, release) } : {})
     };
   });

@@ -62,8 +62,11 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 5. In ADC Agent access, select this device and explicitly enable its device-native capabilities.
 
 The MVP uses a user-started foreground service and a persistent notification. While connected, it
-polls once per second to keep interactive dispatch inside the CLI/MCP quick-wait window rather than
-claiming to be an unrestricted always-on Android daemon.
+keeps an authenticated WebSocket wake channel aligned with desktop Nodes. Wake messages contain no
+task data; the App claims work through the signed poll API. It falls back to a server-woken
+ten-second long poll while the socket reconnects, and to one-second polling with older Control
+Planes. A 30-second durable poll covers a lost wake without claiming to be an unrestricted
+always-on Android daemon.
 
 ## Version and updates
 

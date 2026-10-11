@@ -100,12 +100,13 @@ export class NodeApiClient {
 
   async poll(
     capability: CapabilityAdvertisement,
-    state: { activeTaskCount?: number; claim?: boolean } = {}
+    state: { activeTaskCount?: number; claim?: boolean; waitMs?: number } = {}
   ): Promise<NodePollResponse> {
     return this.signedRequest(`/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/poll`, {
       capability: CapabilitySchema.parse(capability),
       activeTaskCount: state.activeTaskCount ?? 0,
-      claim: state.claim ?? true
+      claim: state.claim ?? true,
+      ...(state.waitMs === undefined ? {} : { waitMs: state.waitMs })
     }) as Promise<NodePollResponse>;
   }
 

@@ -120,6 +120,68 @@ afterEach(async () => {
 });
 
 describe("control plane", () => {
+  it("holds an idle long poll and marks the supported response", async () => {
+    const { node, capability } = await fixture();
+    const startedAt = Date.now();
+
+    await expect(node.poll(capability, { waitMs: 40 })).resolves.toMatchObject({
+      dispatch: null,
+      longPoll: true
+    });
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(30);
+  });
+
+  it("releases a long poll as soon as work is queued", async () => {
+    const { app, owner, node, paired, capability } = await fixture();
+    await node.poll(capability);
+    await ownerRequest(app, "POST", "/api/v1/projects", {
+      projectId: "proj_long_poll",
+      label: "Long poll"
+    });
+    await ownerRequest(app, "POST", "/api/v1/projects/proj_long_poll/roots", {
+      rootId: "root_workspace",
+      nodeId: paired.nodeId,
+      label: "Workspace",
+      writable: true
+    });
+    await ownerRequest(app, "POST", "/api/v1/grants", {
+      grantId: "grant_long_poll",
+      projectId: "proj_long_poll",
+      actorId: "actor_long_poll",
+      profile: "read-only",
+      nodeIds: [paired.nodeId],
+      rootIds: ["root_workspace"],
+      allowedTools: ["file.read"]
+    });
+    const polling = node.poll(capability, { waitMs: 5_000 });
+    await new Promise((resolve) => setImmediate(resolve));
+    const now = new Date();
+    const invocation = InvocationSchema.parse({
+      schemaVersion: "0.1",
+      invocationId: createId("inv"),
+      attemptId: createId("att"),
+      accountId: "acct_primary",
+      actor: { type: "agent", id: "actor_long_poll" },
+      target: { nodeId: paired.nodeId },
+      authorization: {
+        projectId: "proj_long_poll",
+        rootIds: ["root_workspace"],
+        grantId: "grant_long_poll"
+      },
+      tool: "file.read",
+      args: { rootId: "root_workspace", path: "README.md" },
+      issuedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + 60_000).toISOString(),
+      metadata: { source: "sdk" }
+    });
+
+    await expect(owner.invoke(invocation)).resolves.toMatchObject({ status: "queued" });
+    await expect(polling).resolves.toMatchObject({
+      dispatch: { invocation: { invocationId: invocation.invocationId } },
+      longPoll: true
+    });
+  });
+
   it("marks legacy desktop nodes without a build ID as updateable", async () => {
     const directory = await mkdtemp(resolve(tmpdir(), "adc-control-plane-release-"));
     directories.push(directory);

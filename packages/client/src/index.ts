@@ -63,6 +63,7 @@ export interface NodeDispatch {
 export interface NodePollResponse {
   dispatch: NodeDispatch | null;
   maxConcurrency?: number;
+  longPoll?: boolean;
   update?: NodeReleaseUpdate;
 }
 

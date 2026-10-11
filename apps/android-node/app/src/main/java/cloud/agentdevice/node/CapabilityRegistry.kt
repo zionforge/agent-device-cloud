@@ -997,33 +997,57 @@ class CapabilityRegistry(
 
     private fun uiGestureSchema(): JSONObject =
         JSONObject()
-            .put("type", "object")
             .put(
-                "properties",
-                JSONObject()
+                "oneOf",
+                JSONArray()
                     .put(
-                        "type",
                         JSONObject()
-                            .put("type", "string")
-                            .put("enum", JSONArray(listOf("tap", "swipe")))
+                            .put("type", "object")
+                            .put(
+                                "properties",
+                                JSONObject()
+                                    .put("type", JSONObject().put("const", "tap"))
+                                    .put("x", coordinateSchema())
+                                    .put("y", coordinateSchema())
+                            )
+                            .put("required", JSONArray(listOf("type", "x", "y")))
+                            .put("additionalProperties", false)
                     )
-                    .put("x", coordinateSchema())
-                    .put("y", coordinateSchema())
-                    .put("startX", coordinateSchema())
-                    .put("startY", coordinateSchema())
-                    .put("endX", coordinateSchema())
-                    .put("endY", coordinateSchema())
                     .put(
-                        "durationMs",
                         JSONObject()
-                            .put("type", "integer")
-                            .put("minimum", 50)
-                            .put("maximum", 5000)
-                            .put("default", 300)
+                            .put("type", "object")
+                            .put(
+                                "properties",
+                                JSONObject()
+                                    .put("type", JSONObject().put("const", "swipe"))
+                                    .put("startX", coordinateSchema())
+                                    .put("startY", coordinateSchema())
+                                    .put("endX", coordinateSchema())
+                                    .put("endY", coordinateSchema())
+                                    .put(
+                                        "durationMs",
+                                        JSONObject()
+                                            .put("type", "integer")
+                                            .put("minimum", 50)
+                                            .put("maximum", 5000)
+                                            .put("default", 300)
+                                    )
+                            )
+                            .put(
+                                "required",
+                                JSONArray(
+                                    listOf(
+                                        "type",
+                                        "startX",
+                                        "startY",
+                                        "endX",
+                                        "endY"
+                                    )
+                                )
+                            )
+                            .put("additionalProperties", false)
                     )
             )
-            .put("required", JSONArray(listOf("type")))
-            .put("additionalProperties", false)
 
     private fun coordinateSchema(): JSONObject =
         JSONObject()

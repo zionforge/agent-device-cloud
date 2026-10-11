@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ResultSchema, type Invocation } from "@adc/protocol";
 import { McpInvocationAdapter, createMcpServer } from "./index.ts";
 
@@ -343,6 +343,44 @@ describe("McpInvocationAdapter", () => {
       const second = (await client.listTools()).tools[0]!;
       expect(
         ((second.inputSchema.properties!.target as any).properties.nodeId as any).enum
+      ).toEqual(["node_beta"]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("proactively notifies the host when live tools change", async () => {
+    let context = {
+      accountId: "acct_primary",
+      actorId: "actor_testagent",
+      grantId: "grant_example",
+      nodeIds: ["node_alpha"],
+      toolNodeIds: { "file.read": ["node_alpha"] },
+      rootIds: [],
+      allowedTools: ["file.read" as const]
+    };
+    const server = createMcpServer({
+      client: { invoke: async () => Promise.reject(new Error("not called")) },
+      context,
+      loadContext: async () => context,
+      contextRefreshIntervalMs: 10
+    });
+    const changed = vi.spyOn(server, "sendToolListChanged");
+    const client = new Client({ name: "proactive-refresh-test", version: "0.1.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      context = {
+        ...context,
+        nodeIds: ["node_beta"],
+        toolNodeIds: { "file.read": ["node_beta"] }
+      };
+      await vi.waitFor(() => expect(changed).toHaveBeenCalled(), { timeout: 1_000 });
+      const listed = (await client.listTools()).tools[0]!;
+      expect(
+        ((listed.inputSchema.properties!.target as any).properties.nodeId as any).enum
       ).toEqual(["node_beta"]);
     } finally {
       await client.close();
