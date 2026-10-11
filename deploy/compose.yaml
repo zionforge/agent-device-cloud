@@ -43,10 +43,12 @@ services:
       ADC_CORS_ORIGINS: ${ADC_CORS_ORIGINS:-}
       ADC_CONSOLE_DIR: /app/apps/console/dist
       ADC_NODE_DOWNLOAD_URL: ${ADC_NODE_DOWNLOAD_URL:-}
+      ADC_ANDROID_RELEASE_DIR: /var/lib/agent-device-cloud/android-releases
       ADC_ASSET_DIR: /var/lib/agent-device-cloud/assets
       DATABASE_URL: postgresql://adc:${ADC_DATABASE_PASSWORD}@postgres:5432/adc
     volumes:
       - adc-assets:/var/lib/agent-device-cloud/assets
+      - ${ADC_ANDROID_RELEASE_HOST_DIR:-./android-releases}:/var/lib/agent-device-cloud/android-releases:ro
     healthcheck:
       test:
         [

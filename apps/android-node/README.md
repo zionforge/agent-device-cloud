@@ -61,8 +61,21 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
    permission, screen-share and Accessibility consent remain separate system-level boundaries.
 5. In ADC Agent access, select this device and explicitly enable its device-native capabilities.
 
-The MVP uses a user-started foreground service and a persistent notification. It polls every 15
-seconds rather than claiming to be an unrestricted always-on Android daemon.
+The MVP uses a user-started foreground service and a persistent notification. While connected, it
+polls once per second to keep interactive dispatch inside the CLI/MCP quick-wait window rather than
+claiming to be an unrestricted always-on Android daemon.
+
+## Version and updates
+
+The App's **Version & updates** section shows the installed version, the latest version published by
+the paired Control Plane, localized release notes and the last check time. The App validates the
+download size, SHA-256, package metadata and signing certificate before opening Android's package
+installer. Installation always requires device-owner confirmation.
+
+The first updater-enabled build must still be installed manually. Signed release publication and
+the trust boundary are documented in
+[Android Mobile Node distribution](../../docs/android-node-distribution.md). Debug APKs are for
+local development and must not be published through the production update channel.
 
 ## Xiaomi and HyperOS
 

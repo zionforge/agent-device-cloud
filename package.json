@@ -15,6 +15,7 @@
   "scripts": {
     "build": "pnpm schema:check && tsc --noEmit && pnpm --filter @adc/console build",
     "build:node": "tsx scripts/build-node.ts",
+    "publish:android": "tsx scripts/publish-android-release.ts",
     "dev": "pnpm --filter @adc/console build && node --env-file-if-exists=.env --import tsx --watch apps/control-plane/src/main.ts",
     "start": "node --env-file-if-exists=.env --import tsx apps/control-plane/src/main.ts",
     "format:check": "prettier --check .",

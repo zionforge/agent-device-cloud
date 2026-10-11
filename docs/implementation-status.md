@@ -43,6 +43,8 @@
   capability availability, foreground service operation and local execution for battery, network,
   foreground location, notifications, screen capture, UI inspection/control, gestures and system
   navigation
+- Android in-App version discovery, localized release notes and device-owner-confirmed updates with
+  same-origin download, size/hash, package metadata and installed-signing-certificate verification
 - Per-device Android capability switches with high-risk screen capture and UI control disabled by
   default, MediaProjection consent and Accessibility service enforcement
 - Content-addressed PNG artifact storage with PostgreSQL metadata and hash verification
@@ -85,7 +87,7 @@
 
 ## Verified
 
-- 167 passing unit tests across 28 files; one opt-in macOS service test remains environment-gated
+- 171 passing unit tests across 29 files; one opt-in macOS service test remains environment-gated
 - Real PostgreSQL migration, concurrent `SKIP LOCKED` claims and restart persistence
 - Pairing/replay/revoke behavior
 - Symlink escape, secret redaction, command denial, timeout/cancel and output limits

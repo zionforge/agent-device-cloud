@@ -8,6 +8,10 @@ import { z } from "zod";
 import { verifyNodeRequest } from "@adc/client/node";
 import { registerCors } from "./cors.ts";
 import {
+  registerAndroidDistributionRoutes,
+  type AndroidDistribution
+} from "./android-distribution.ts";
+import {
   type AgentGrantRecord,
   type ApprovalRecord,
   type AuditEvent,
@@ -75,6 +79,7 @@ export interface ControlPlaneOptions {
   leaseMs?: number;
   consoleDirectory?: string;
   nodeDistribution?: NodeDistribution;
+  androidDistribution?: AndroidDistribution;
   trustProxy?: string[];
   /** Opt-in cross-origin origins for API consumers. See registerCors(). */
   corsOrigins?: string[] | "*";
@@ -1751,6 +1756,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
   });
 
   registerDistributionRoutes(app, options.nodeDistribution);
+  registerAndroidDistributionRoutes(app, options.androidDistribution);
   app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => ({
     ...distributionInfo(options.nodeDistribution),
     latest: await latestNodeRelease(options.nodeDistribution)

@@ -116,6 +116,12 @@ const app = await createControlPlane({
     publicUrl: publicURL,
     ...(process.env.ADC_NODE_DOWNLOAD_URL ? { downloadUrl: process.env.ADC_NODE_DOWNLOAD_URL } : {})
   },
+  androidDistribution: {
+    directory:
+      process.env.ADC_ANDROID_RELEASE_DIR ||
+      fileURLToPath(new URL("../../../dist/android", import.meta.url)),
+    publicUrl: publicURL
+  },
   ...(process.env.ADC_TRUSTED_PROXIES
     ? { trustProxy: process.env.ADC_TRUSTED_PROXIES.split(",") }
     : {})

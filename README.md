@@ -31,8 +31,10 @@ Self-hosted installations send no analytics by default.
 The native Android source, build instructions, current capabilities and Xiaomi/HyperOS limitations
 are documented in [apps/android-node](apps/android-node/README.md). The
 [Android capability matrix](docs/android-capability-matrix.md) separates ordinary App APIs,
-user-confirmed and special-access flows, and managed-device-only operations. The Mobile Node has
-physical Xiaomi/MIUI validation but is not included in the hosted Connector downloads.
+user-confirmed and special-access flows, and managed-device-only operations. Signed APK publication
+and the App's verified update channel are documented in
+[Android Mobile Node distribution](docs/android-node-distribution.md). The Mobile Node has physical
+Xiaomi/MIUI validation but is not included in the hosted Connector downloads.
 
 ## Hosted preview
 

@@ -20,6 +20,8 @@ anonymous administration endpoint is created. Use the [README](../README.md) for
 | `ADC_CONSOLE_DIR`                                  | Optional built console path; defaults to `apps/console/dist`                               |
 | `ADC_NODE_RELEASE_DIR`                             | Local downloadable client directory; defaults to `dist/node`                               |
 | `ADC_NODE_DOWNLOAD_URL`                            | Optional external release directory on a static website/CDN/GitHub Releases                |
+| `ADC_ANDROID_RELEASE_DIR`                          | Verified Android manifest/APK directory; defaults to `dist/android`                        |
+| `ADC_ANDROID_RELEASE_HOST_DIR`                     | Compose host directory mounted read-only as the Android release directory                  |
 | `ADC_ASSET_DIR`                                    | Persistent content-addressed storage for image artifacts; required for screen capture      |
 | `HOST`, `PORT`                                     | Default API bind is `127.0.0.1:8787`; Compose uses its private network                     |
 | `ADC_NODE_CONFIG`                                  | Local device configuration override                                                        |
