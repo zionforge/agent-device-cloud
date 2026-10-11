@@ -281,7 +281,9 @@ class NodeService : Service() {
         private const val EXTRA_SCREEN_CAPTURE_DATA = "screenCaptureData"
         private const val SERVICE_CHANNEL = "adc-node-service"
         private const val NOTIFICATION_ID = 4101
-        private const val POLL_INTERVAL_MS = 15_000L
+        // Android has no push wake channel yet. Keep dispatch latency within
+        // the CLI/MCP quick-wait window while the foreground Node is running.
+        private const val POLL_INTERVAL_MS = 1_000L
         private const val LEASE_RENEW_INTERVAL_MS = 8_000L
 
         fun start(context: Context) {
