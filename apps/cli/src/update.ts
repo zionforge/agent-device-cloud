@@ -174,6 +174,13 @@ async function nodeControlPlane(): Promise<string | undefined> {
   }
 }
 
+export function updateControlPlane(
+  pairedControlPlane: string | undefined,
+  environmentControlPlane: string | undefined
+): string | undefined {
+  return pairedControlPlane ?? environmentControlPlane;
+}
+
 async function runInstaller(
   script: string,
   options: { controlPlaneUrl?: string; downloadUrl: string; noService: boolean }
@@ -337,7 +344,12 @@ export async function updateClient(options: UpdateOptions) {
   const current = ReleaseSchema.parse(
     JSON.parse(await readFile(resolve(currentDirectory, "release.json"), "utf8"))
   );
-  const controlPlaneUrl = process.env.ADC_CONTROL_PLANE_URL ?? (await nodeControlPlane());
+  // A managed launcher can outlive the server it was first installed from.
+  // The paired node config is the durable identity source and must win.
+  const controlPlaneUrl = updateControlPlane(
+    await nodeControlPlane(),
+    process.env.ADC_CONTROL_PLANE_URL
+  );
   const source =
     options.downloadUrl ??
     process.env.ADC_UPDATE_URL ??

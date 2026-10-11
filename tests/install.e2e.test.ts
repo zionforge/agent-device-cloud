@@ -240,6 +240,25 @@ describe("released device installer over HTTP", () => {
     expect(await readFile(resolve(env.ADC_BIN_DIR!, "adc-node"), "utf8")).toContain(
       runtimePathExport
     );
+    expect(await readFile(resolve(env.ADC_BIN_DIR!, "adc"), "utf8")).not.toContain(
+      "ADC_CONTROL_PLANE_URL"
+    );
+    const installerResponse = await fetch(`${origin}/install.sh`);
+    const migrated = await run(
+      "/bin/sh",
+      [
+        "-s",
+        "--",
+        "--url",
+        "http://localhost:65534",
+        "--download-url",
+        `${origin}/downloads/node`,
+        "--no-service"
+      ],
+      await installerResponse.text()
+    );
+    expect(migrated.code, `${migrated.stderr}\n${migrated.stdout}`).toBe(0);
+    expect(await readFile(env.ADC_NODE_CONFIG!, "utf8")).toBe(original);
     expect((await node(["--version"])).stdout.trim()).toBe(releaseVersion);
     expect((await cli(["--help"])).code).toBe(0);
     const updateCheck = await cli(["update", "--check", "--json"]);

@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cachedUpdateNotice, parseManifestForTarget } from "./update.ts";
+import { cachedUpdateNotice, parseManifestForTarget, updateControlPlane } from "./update.ts";
 
 const archive = {
   file: "adc-0.1.1-darwin-arm64-0123456789abcdef.tar.gz",
@@ -99,5 +99,13 @@ describe("cachedUpdateNotice", () => {
     await expect(
       cachedUpdateNotice("adc-0.1.1-darwin-arm64-new", checkedAt.getTime() + 25 * 60 * 60 * 1000)
     ).resolves.toEqual({ stale: true });
+  });
+});
+
+describe("updateControlPlane", () => {
+  it("prefers the durable paired-node URL over a stale launcher environment", () => {
+    expect(updateControlPlane("https://devices.example.com", "http://localhost:8787")).toBe(
+      "https://devices.example.com"
+    );
   });
 });

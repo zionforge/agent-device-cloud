@@ -182,13 +182,15 @@ try {
   $env:ADC_BIN_DIR = $BinDir
   $env:ADC_NODE_CONFIG = $ConfigPath
   $SetupArgs = @((Join-Path $Payload "lib\adc-node.mjs"), "setup")
-  if ($Url) { $SetupArgs += @("--url", $Url) }
-  if ($Code) { $SetupArgs += @("--code", $Code) }
-  if ($Label) { $SetupArgs += @("--label", $Label) }
-  if ($RootPath) { $SetupArgs += @("--root-path", $RootPath) }
-  if ($RootId) { $SetupArgs += @("--root-id", $RootId) }
-  if ($Access) { $SetupArgs += @("--access", $Access) }
-  if ($ReadOnly) { $SetupArgs += "--read-only" }
+  if (-not (Test-Path -LiteralPath $ConfigPath)) {
+    if ($Url) { $SetupArgs += @("--url", $Url) }
+    if ($Code) { $SetupArgs += @("--code", $Code) }
+    if ($Label) { $SetupArgs += @("--label", $Label) }
+    if ($RootPath) { $SetupArgs += @("--root-path", $RootPath) }
+    if ($RootId) { $SetupArgs += @("--root-id", $RootId) }
+    if ($Access) { $SetupArgs += @("--access", $Access) }
+    if ($ReadOnly) { $SetupArgs += "--read-only" }
+  }
   $SetupArgs += "--no-service"
   & $Runtime @SetupArgs
   if ($LASTEXITCODE -ne 0) {
@@ -223,11 +225,6 @@ try {
   $EscapedBin = Escape-Cmd $BinDir
   $EscapedDownload = Escape-Cmd $DownloadUrl
   $EscapedConfig = Escape-Cmd $ConfigPath
-  $ControlPlaneLine = if ($Url) {
-    "set `"ADC_CONTROL_PLANE_URL=$(Escape-Cmd $Url)`"`r`n"
-  } else {
-    ""
-  }
   $ServiceLine = if ($env:ADC_SERVICE_DIR) {
     "set `"ADC_SERVICE_DIR=$(Escape-Cmd $env:ADC_SERVICE_DIR)`"`r`n"
   } else {
@@ -241,7 +238,6 @@ try {
       "set `"ADC_INSTALL_DIR=$EscapedInstall`"`r`n" +
       "set `"ADC_BIN_DIR=$EscapedBin`"`r`n" +
       "set `"ADC_UPDATE_URL=$EscapedDownload`"`r`n" +
-      $ControlPlaneLine +
       "if not defined ADC_NODE_CONFIG set `"ADC_NODE_CONFIG=$EscapedConfig`"`r`n" +
       $ServiceLine +
       "for /f `"usebackq delims=`" %%R in (`"%ADC_INSTALL_DIR%\current.txt`") do set `"ADC_RELEASE=%%R`"`r`n" +
