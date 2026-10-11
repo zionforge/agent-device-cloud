@@ -44,6 +44,24 @@ export type AndroidReleaseManifest = z.infer<typeof AndroidReleaseManifestSchema
 const APK_FILE_PATTERN = /^adc-mobile-node-[0-9A-Za-z._+-]+-[a-f0-9]{16}\.apk$/;
 const MANIFEST_FILE = "manifest.json";
 const MAX_MANIFEST_BYTES = 256 * 1024;
+const MAX_APK_BYTES = 250 * 1024 * 1024;
+const PREVIEW_FILE = "preview.apk";
+
+export async function androidPreviewInfo(
+  distribution?: AndroidDistribution
+): Promise<{ url: string; bytes: number } | undefined> {
+  if (!distribution) return;
+  try {
+    const metadata = await stat(resolve(distribution.directory, PREVIEW_FILE));
+    if (!metadata.isFile() || metadata.size <= 0 || metadata.size > MAX_APK_BYTES) return;
+    return {
+      url: new URL(`/downloads/android/${PREVIEW_FILE}`, distribution.publicUrl).href,
+      bytes: metadata.size
+    };
+  } catch {
+    return;
+  }
+}
 
 export async function readAndroidRelease(
   distribution?: AndroidDistribution
@@ -85,6 +103,17 @@ export function registerAndroidDistributionRoutes(
   app: FastifyInstance,
   distribution?: AndroidDistribution
 ) {
+  app.get("/downloads/android/preview.apk", async (_request, reply) => {
+    const preview = await androidPreviewInfo(distribution);
+    if (!preview) return reply.code(404).send({ error: "Android preview is not published." });
+    reply
+      .header("cache-control", "no-cache")
+      .header("content-disposition", 'attachment; filename="adc-mobile-node-preview.apk"')
+      .header("content-length", preview.bytes)
+      .type("application/vnd.android.package-archive");
+    return reply.send(createReadStream(resolve(distribution!.directory, PREVIEW_FILE)));
+  });
+
   app.get(
     "/downloads/android/:file",
     async (request: FastifyRequest<{ Params: { file: string } }>, reply: FastifyReply) => {

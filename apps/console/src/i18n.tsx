@@ -751,8 +751,14 @@ export const zh = {
     "在 Windows PowerShell 中运行此命令，无需预装 curl、shell 或 Node.js。",
   "Run this command inside WSL to connect the Linux environment, not the Windows host.":
     "在 WSL 内运行此命令；连接的是 Linux 环境，而不是 Windows 主机。",
+  "Download the preview APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node.":
+    "下载预览 APK，按 Android 提示允许此浏览器安装应用，然后在 ADC Mobile Node 中输入这些信息。",
   "Installs the connector and starts it in the background. Your device will appear below automatically.":
     "安装连接器并在后台启动，设备会自动出现在下方。",
+  "Preview builds use a development signing key and do not participate in automatic updates.":
+    "预览构建使用开发签名，不会进入自动更新通道。",
+  "Download preview APK": "下载预览 APK",
+  "Android preview is not available on this installation.": "此站点暂未提供 Android 预览 APK。",
   "Device downloads are not available yet. Contact the installation administrator.":
     "设备安装包暂不可用，请联系站点管理员。",
   "Could not copy. Select and copy the command above.": "复制失败，请手动选择并复制上方命令。",

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { verifyNodeRequest } from "@adc/client/node";
 import { registerCors } from "./cors.ts";
 import {
+  androidPreviewInfo,
   registerAndroidDistributionRoutes,
   type AndroidDistribution
 } from "./android-distribution.ts";
@@ -1760,10 +1761,14 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
 
   registerDistributionRoutes(app, options.nodeDistribution);
   registerAndroidDistributionRoutes(app, options.androidDistribution);
-  app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => ({
-    ...distributionInfo(options.nodeDistribution),
-    latest: await latestNodeRelease(options.nodeDistribution)
-  }));
+  app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => {
+    const androidPreview = await androidPreviewInfo(options.androidDistribution);
+    return {
+      ...distributionInfo(options.nodeDistribution),
+      latest: await latestNodeRelease(options.nodeDistribution),
+      ...(androidPreview ? { androidPreviewUrl: androidPreview.url } : {})
+    };
+  });
 
   if (options.consoleDirectory) {
     const publicSite = await PublicSite.load(options.consoleDirectory);

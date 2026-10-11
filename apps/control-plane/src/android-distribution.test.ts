@@ -107,6 +107,36 @@ describe("Android release distribution", () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it("serves a manual preview without publishing it as an automatic update", async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), "adc-android-preview-"));
+    directories.push(directory);
+    const preview = Buffer.from("manually-installed-preview-apk");
+    await writeFile(resolve(directory, "preview.apk"), preview);
+    const app = Fastify();
+    apps.push(app);
+    registerAndroidDistributionRoutes(app, {
+      directory,
+      publicUrl: "https://devices.example.com"
+    });
+
+    const previewResponse = await app.inject({
+      method: "GET",
+      url: "/downloads/android/preview.apk"
+    });
+    expect(previewResponse.statusCode).toBe(200);
+    expect(previewResponse.headers["cache-control"]).toBe("no-cache");
+    expect(previewResponse.headers["content-disposition"]).toContain("adc-mobile-node-preview.apk");
+    expect(previewResponse.rawPayload).toEqual(preview);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/downloads/android/manifest.json"
+        })
+      ).statusCode
+    ).toBe(404);
+  });
+
   it("rejects a manifest whose APK is cross-origin or the wrong size", async () => {
     const { directory, distribution, manifest } = await fixture();
     await writeFile(

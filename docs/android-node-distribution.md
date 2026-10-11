@@ -13,6 +13,17 @@ Android updates use a separate release channel from desktop Node archives:
 An empty release directory returns HTTP 404 and the App reports that no Android release is
 published. It never treats a debug build or a desktop Node archive as a mobile update.
 
+## Manual preview download
+
+Hosted installations may place a manually qualified APK at `preview.apk` in
+`ADC_ANDROID_RELEASE_DIR`. The Control Plane then exposes it at
+`/downloads/android/preview.apk` and shows the link in the Android tab of **Pair device**.
+
+This stable preview link is separate from `manifest.json`. It is intended for explicit manual
+installation and does not make the APK an automatic update. Preview builds must be labeled as using
+a development signing key; operators must replace them with a protected production-signed release
+before treating the Android channel as production.
+
 ## Trust and installation boundary
 
 Before opening Android's package installer, the App verifies all of the following:

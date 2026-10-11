@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CirclePlus,
   Clipboard,
+  Download,
   FolderRoot,
   Laptop,
   LayoutDashboard,
@@ -418,8 +419,11 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
     windowsInstallerUrl: string;
     downloadUrl: string;
     controlPlaneUrl: string;
+    androidPreviewUrl?: string;
   }>();
-  const [installPlatform, setInstallPlatform] = useState<"unix" | "windows" | "wsl">("unix");
+  const [installPlatform, setInstallPlatform] = useState<"unix" | "windows" | "wsl" | "android">(
+    "unix"
+  );
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -483,7 +487,16 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
     pairing && installation
       ? `$ErrorActionPreference='Stop'; [Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12; $p=Join-Path $env:TEMP ('adc-install-'+[guid]::NewGuid().ToString('N')+'.ps1'); Invoke-WebRequest -UseBasicParsing -Uri ${powershellQuote(installation.windowsInstallerUrl)} -OutFile $p; & (Join-Path $env:SystemRoot 'System32\\WindowsPowerShell\\v1.0\\powershell.exe') -NoProfile -ExecutionPolicy Bypass -File $p -Url ${powershellQuote(installation.controlPlaneUrl)} -DownloadUrl ${powershellQuote(installation.downloadUrl)} -Code ${powershellQuote(pairing.code)}; $ec=$LASTEXITCODE; Remove-Item $p -Force -ErrorAction SilentlyContinue; if($null -eq $ec -or $ec -ne 0){throw "ADC installer failed with exit code $ec"}`
       : "";
-  const command = installPlatform === "windows" ? windowsCommand : unixCommand;
+  const androidPairing =
+    pairing && installation
+      ? `ADC HTTPS URL: ${installation.controlPlaneUrl}\nPairing code: ${pairing.code}`
+      : "";
+  const command =
+    installPlatform === "windows"
+      ? windowsCommand
+      : installPlatform === "android"
+        ? androidPairing
+        : unixCommand;
   const modes: Record<string, Message> = {
     none: "No access",
     selected: "Selected folders",
@@ -523,7 +536,8 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
               [
                 ["unix", "macOS / Linux"],
                 ["windows", "Windows PowerShell"],
-                ["wsl", "WSL"]
+                ["wsl", "WSL"],
+                ["android", "Android"]
               ] as const
             ).map(([value, label]) => (
               <button
@@ -543,9 +557,11 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
             {t(
               installPlatform === "windows"
                 ? "Run this command in Windows PowerShell. No preinstalled curl, shell or Node.js is required."
-                : installPlatform === "wsl"
-                  ? "Run this command inside WSL to connect the Linux environment, not the Windows host."
-                  : "Run this command in a terminal on your Mac or Linux device. Choose access during setup, or leave folders for later."
+                : installPlatform === "android"
+                  ? "Download the preview APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node."
+                  : installPlatform === "wsl"
+                    ? "Run this command inside WSL to connect the Linux environment, not the Windows host."
+                    : "Run this command in a terminal on your Mac or Linux device. Choose access during setup, or leave folders for later."
             )}
           </p>
           <pre>
@@ -554,30 +570,46 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
           <div className="install-footer">
             <span>
               {t(
-                "Installs the connector and starts it in the background. Your device will appear below automatically."
+                installPlatform === "android"
+                  ? "Preview builds use a development signing key and do not participate in automatic updates."
+                  : "Installs the connector and starts it in the background. Your device will appear below automatically."
               )}
             </span>
-            <button
-              className="secondary"
-              disabled={now >= Date.parse(pairing.expiresAt)}
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(command);
-                  setCopied(true);
-                } catch {
-                  onError(t("Could not copy. Select and copy the command above."));
-                }
-              }}
-            >
-              {copied ? <Check size={16} /> : <Clipboard size={16} />}
-              {t(
-                now >= Date.parse(pairing.expiresAt)
-                  ? "Code expired"
-                  : copied
-                    ? "Copied"
-                    : "Copy command"
-              )}
-            </button>
+            {installPlatform === "android" ? (
+              installation?.androidPreviewUrl ? (
+                <a className="secondary" href={installation.androidPreviewUrl}>
+                  <Download size={16} />
+                  {t("Download preview APK")}
+                </a>
+              ) : (
+                <button className="secondary" disabled>
+                  <Download size={16} />
+                  {t("Android preview is not available on this installation.")}
+                </button>
+              )
+            ) : (
+              <button
+                className="secondary"
+                disabled={now >= Date.parse(pairing.expiresAt)}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(command);
+                    setCopied(true);
+                  } catch {
+                    onError(t("Could not copy. Select and copy the command above."));
+                  }
+                }}
+              >
+                {copied ? <Check size={16} /> : <Clipboard size={16} />}
+                {t(
+                  now >= Date.parse(pairing.expiresAt)
+                    ? "Code expired"
+                    : copied
+                      ? "Copied"
+                      : "Copy command"
+                )}
+              </button>
+            )}
           </div>
         </div>
       ) : null}

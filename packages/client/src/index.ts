@@ -202,6 +202,7 @@ export interface NodeInstallation {
   downloadUrl?: string;
   installerUrl?: string;
   windowsInstallerUrl?: string;
+  androidPreviewUrl?: string;
   latest?: NodeReleaseSummary;
 }
 
