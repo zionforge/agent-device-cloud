@@ -2,6 +2,7 @@ import {
   ControlPlaneTools,
   ErrorSchema,
   InvocationSchema,
+  WaitMsSchema,
   ResultSchema,
   absolutePathForToolArgs,
   createId,
@@ -239,6 +240,7 @@ export function buildInvocation(input: {
   source: "http" | "cli" | "mcp" | "sdk" | "skill" | "internal";
   idempotencyKey?: string;
   timeoutMs?: number;
+  executionTimeoutMs?: number;
 }): Invocation {
   const issuedAt = new Date();
   const tool = input.tool;
@@ -290,7 +292,12 @@ export function buildInvocation(input: {
     tool: input.tool,
     args: input.args,
     issuedAt: issuedAt.toISOString(),
-    expiresAt: new Date(issuedAt.getTime() + (input.timeoutMs ?? 5 * 60_000)).toISOString(),
+    expiresAt: new Date(
+      issuedAt.getTime() + (input.timeoutMs ?? input.executionTimeoutMs ?? 5 * 60_000)
+    ).toISOString(),
+    ...(input.executionTimeoutMs !== undefined
+      ? { executionTimeoutMs: input.executionTimeoutMs }
+      : {}),
     ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
     metadata: { source: input.source }
   });
@@ -542,23 +549,43 @@ export class AdcClient {
     })) as { revoked: true };
   }
 
-  async invoke(input: Invocation): Promise<InvocationResult> {
+  async invoke(
+    input: Invocation,
+    options: { waitMs?: number; signal?: AbortSignal } = {}
+  ): Promise<InvocationResult> {
     const invocation = InvocationSchema.parse(input);
-    const response = await this.request("/api/v1/invocations", {
+    const waitMs = WaitMsSchema.parse(options.waitMs ?? 0);
+    const response = await this.request(`/api/v1/invocations?waitMs=${waitMs}`, {
       method: "POST",
+      ...(options.signal ? { signal: options.signal } : {}),
       body: JSON.stringify(invocation)
     });
     return ResultSchema.parse(response);
   }
 
-  async invocationStatus(invocationId: string): Promise<InvocationResult> {
+  async invocationStatus(
+    invocationId: string,
+    options: { waitMs?: number; signal?: AbortSignal } = {}
+  ): Promise<InvocationResult> {
     return ResultSchema.parse(
-      await this.request(`/api/v1/invocations/${encodeURIComponent(invocationId)}`)
+      await this.request(
+        `/api/v1/invocations/${encodeURIComponent(invocationId)}?waitMs=${WaitMsSchema.parse(options.waitMs ?? 0)}`,
+        options.signal ? { signal: options.signal } : {}
+      )
     );
   }
 
   async taskStatus(jobId: string): Promise<InvocationResult> {
     return ResultSchema.parse(await this.request(`/api/v1/tasks/${encodeURIComponent(jobId)}`));
+  }
+
+  async taskWait(jobId: string, waitMs = 4000, signal?: AbortSignal): Promise<InvocationResult> {
+    return ResultSchema.parse(
+      await this.request(
+        `/api/v1/tasks/${encodeURIComponent(jobId)}?waitMs=${WaitMsSchema.parse(waitMs)}`,
+        signal ? { signal } : {}
+      )
+    );
   }
 
   async cancelTask(jobId: string): Promise<InvocationResult> {

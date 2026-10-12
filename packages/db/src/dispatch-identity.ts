@@ -21,7 +21,8 @@ export function invocationInputHash(invocation: Invocation): string {
         tool: invocation.tool,
         args: invocation.args,
         target: invocation.target,
-        idempotencyKey: invocation.idempotencyKey
+        idempotencyKey: invocation.idempotencyKey,
+        executionTimeoutMs: invocation.executionTimeoutMs
       })
     )
     .digest("hex");

@@ -13,6 +13,64 @@ const context: InvocationContext = {
 };
 
 describe("device invocation context", () => {
+  it("validates execution budgets and derives submission expiry", () => {
+    const invocation = buildInvocation({
+      context,
+      tool: "file.read",
+      args: { rootId: "root_workspace", path: "a.txt" },
+      source: "sdk",
+      executionTimeoutMs: 10_000
+    });
+    expect(Date.parse(invocation.expiresAt) - Date.parse(invocation.issuedAt)).toBe(10_000);
+    expect(invocation.executionTimeoutMs).toBe(10_000);
+    expect(() =>
+      buildInvocation({
+        context,
+        tool: "file.read",
+        args: { rootId: "root_workspace", path: "a.txt" },
+        source: "sdk",
+        executionTimeoutMs: 99
+      })
+    ).toThrow();
+  });
+
+  it("sends bounded server waits and cancellation signals without changing the invocation", async () => {
+    const calls: Array<{ url: URL; init: RequestInit | undefined }> = [];
+    const invocation = buildInvocation({
+      context,
+      tool: "file.read",
+      args: { rootId: "root_workspace", path: "a.txt" },
+      source: "sdk"
+    });
+    const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: new URL(input.toString()), init });
+      return Response.json({
+        schemaVersion: "0.1",
+        invocationId: invocation.invocationId,
+        attemptId: invocation.attemptId,
+        status: "queued",
+        jobId: "job_example"
+      });
+    }) as typeof fetch;
+    const client = new AdcClient("https://adc.example", "test", fetcher);
+    const signal = new AbortController().signal;
+    await client.invoke(invocation);
+    await client.invoke(invocation, { waitMs: 4000, signal });
+    await client.taskWait("job_example", 30000, signal);
+    await client.invocationStatus(invocation.invocationId, { waitMs: 1000, signal });
+    expect(calls.map(({ url }) => url.searchParams.get("waitMs"))).toEqual([
+      "0",
+      "4000",
+      "30000",
+      "1000"
+    ]);
+    expect(calls[1]!.init?.signal).toBe(signal);
+    expect(JSON.parse(String(calls[1]!.init?.body))).toEqual(invocation);
+    expect(calls[2]!.init?.signal).toBe(signal);
+    await expect(client.invoke(invocation, { waitMs: -1 })).rejects.toThrow();
+    expect(calls).toHaveLength(4);
+  });
+
   it("uses a single device without a project", () => {
     expect(
       buildInvocation({

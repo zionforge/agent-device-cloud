@@ -191,17 +191,30 @@ class NodeService : Service() {
         val leaseExpiresAt = AtomicLong(
             Instant.parse(acknowledged.getString("leaseExpiresAt")).toEpochMilli()
         )
+        val invocation = dispatch.getJSONObject("invocation")
+        val executionDeadline = if (invocation.has("executionTimeoutMs")) {
+            minOf(
+                Instant.parse(invocation.getString("expiresAt")).toEpochMilli(),
+                Instant.parse(invocation.getString("issuedAt")).toEpochMilli() +
+                    invocation.getLong("executionTimeoutMs")
+            )
+        } else Long.MAX_VALUE
         val isCancelled = {
             val expired = System.currentTimeMillis() >= leaseExpiresAt.get()
             if (expired) {
                 leaseValid.set(false)
                 cancelled.set(true)
             }
-            cancelled.get() || !running.get()
+            cancelled.get() || !running.get() || System.currentTimeMillis() >= executionDeadline
         }
         val renewal = leaseExecutor.scheduleWithFixedDelay(
             {
-                if (!isCancelled()) {
+                // Keep the lease while a timed-out operation observes cancellation and
+                // reconciles its result. The execution budget must not invalidate receipts.
+                if (
+                    !cancelled.get() && running.get() && leaseValid.get() &&
+                    System.currentTimeMillis() < leaseExpiresAt.get()
+                ) {
                     try {
                         val response = protocol.renewLease(config, dispatchId, leaseToken)
                         leaseExpiresAt.set(

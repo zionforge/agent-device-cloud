@@ -13,6 +13,8 @@ import {
   ControlPlaneTools,
   ToolArgsSchemas,
   ToolNameSchema,
+  WaitMsSchema,
+  ExecutionTimeoutMsSchema,
   isBuiltinTool,
   isSideEffectTool,
   toolArgsJsonSchema,
@@ -23,7 +25,7 @@ import {
 } from "@adc/protocol";
 
 export interface McpAdapterOptions {
-  client: Pick<AdcClient, "invoke"> & Partial<Pick<AdcClient, "taskStatus">>;
+  client: Pick<AdcClient, "invoke">;
   context: InvocationContext;
   loadContext?: () => Promise<InvocationContext>;
   defaultTarget?: { nodeId: string } | { projectId: string; affinity?: string };
@@ -36,6 +38,8 @@ interface AdapterInput {
   args: unknown;
   target?: { nodeId: string } | { projectId: string; affinity?: string };
   idempotencyKey?: string;
+  waitMs?: number;
+  executionTimeoutMs?: number;
 }
 
 function nodeIdsForTool(context: InvocationContext, tool: ToolId): string[] | undefined {
@@ -137,7 +141,22 @@ function inputJsonSchema(
     properties: {
       args: argsSchema,
       target: targetSchema,
-      idempotencyKey: { type: "string", minLength: 8, maxLength: 256 }
+      idempotencyKey: { type: "string", minLength: 8, maxLength: 256 },
+      waitMs: {
+        type: "integer",
+        minimum: 0,
+        maximum: 30_000,
+        default: 4000,
+        description:
+          "Wait for completion within this call. Zero returns immediately; expiry returns the current task without cancelling it."
+      },
+      executionTimeoutMs: {
+        type: "integer",
+        minimum: 100,
+        maximum: 1_800_000,
+        description:
+          "Optional total execution budget from submission, including queue time. Expiry requests cooperative cancellation."
+      }
     },
     required: [
       "args",
@@ -208,7 +227,8 @@ export class McpInvocationAdapter {
   async invoke(
     tool: ToolId,
     input: AdapterInput,
-    currentContext?: InvocationContext
+    currentContext?: InvocationContext,
+    signal?: AbortSignal
   ): Promise<InvocationResult> {
     const context = currentContext ?? (await this.loadContext());
     if (context.allowedTools && !context.allowedTools.includes(tool)) {
@@ -230,21 +250,15 @@ export class McpInvocationAdapter {
       args: input.args,
       ...(target ? { target } : {}),
       source: "mcp",
+      ...(input.executionTimeoutMs !== undefined
+        ? { executionTimeoutMs: ExecutionTimeoutMsSchema.parse(input.executionTimeoutMs) }
+        : {}),
       ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {})
     });
-    let result = await this.options.client.invoke(invocation);
-    const taskStatus = this.options.client.taskStatus?.bind(this.options.client);
-    const waitMs = this.options.quickWaitMs ?? 1_500;
-    const jobId = result.jobId;
-    if (!taskStatus || !jobId || waitMs <= 0) return result;
-    const deadline = Date.now() + waitMs;
-    let delay = 50;
-    while (["queued", "running"].includes(result.status) && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, Math.min(delay, deadline - Date.now())));
-      result = await taskStatus(jobId);
-      delay = Math.min(delay * 2, 400);
-    }
-    return result;
+    return this.options.client.invoke(invocation, {
+      waitMs: WaitMsSchema.parse(input.waitMs ?? this.options.quickWaitMs ?? 4000),
+      ...(signal ? { signal } : {})
+    });
   }
 }
 
@@ -315,7 +329,7 @@ export function createMcpServer(options: McpAdapterOptions): Server {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: (await refresh(false)).tools
   }));
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const snapshot = await refresh(true);
     const tool = request.params.name as ToolId;
     if (!snapshot.toolsById.has(tool)) {
@@ -330,14 +344,26 @@ export function createMcpServer(options: McpAdapterOptions): Server {
       );
     }
     try {
+      if (
+        Object.keys(input).some(
+          (key) =>
+            !["args", "target", "idempotencyKey", "waitMs", "executionTimeoutMs"].includes(key)
+        )
+      )
+        throw new Error("Unknown tool call field.");
       const result = await adapter.invoke(
         tool,
         {
           args: validation.data,
           ...(input.target ? { target: input.target } : {}),
+          ...(input.waitMs !== undefined ? { waitMs: input.waitMs } : {}),
+          ...(input.executionTimeoutMs !== undefined
+            ? { executionTimeoutMs: input.executionTimeoutMs }
+            : {}),
           ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {})
         },
-        snapshot.context
+        snapshot.context,
+        extra.signal
       );
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
@@ -408,6 +434,7 @@ function descriptionFor(tool: ToolName, context?: InvocationContext): string {
     "test.run": "Run a locally configured test command below an authorized root.",
     "task.status": "Get the state of an asynchronous invocation.",
     "task.result": "Read the terminal result of an invocation.",
+    "task.wait": "Wait for an existing task without submitting or restarting it.",
     "task.cancel": "Request cancellation of an asynchronous invocation."
   };
   if (tool !== "shell.exec" || !context) return descriptions[tool];

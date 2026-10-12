@@ -272,6 +272,19 @@ export class NodeDaemon {
       leaseTimer.unref();
     };
     armLeaseDeadline(acknowledged.leaseExpiresAt);
+    let executionTimer: ReturnType<typeof setTimeout> | undefined;
+    if (dispatch.invocation.executionTimeoutMs !== undefined) {
+      const deadline = Math.min(
+        Date.parse(dispatch.invocation.expiresAt),
+        Date.parse(dispatch.invocation.issuedAt) + dispatch.invocation.executionTimeoutMs
+      );
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) cancellation.abort();
+      else {
+        executionTimer = setTimeout(() => cancellation.abort(), remaining);
+        executionTimer.unref();
+      }
+    }
     let renewInFlight = false;
     const renewTimer = setInterval(
       () => {
@@ -369,6 +382,7 @@ export class NodeDaemon {
       clearInterval(renewTimer);
       if (configTimer) clearInterval(configTimer);
       if (leaseTimer) clearTimeout(leaseTimer);
+      if (executionTimer) clearTimeout(executionTimer);
       lifecycle.removeEventListener("abort", onStop);
     }
   }

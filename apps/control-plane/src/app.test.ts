@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import type { InjectOptions, LightMyRequestResponse } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { AdcClient } from "@adc/client";
+import { AdcClient, buildInvocation } from "@adc/client";
 import { NodeApiClient, generateNodeKeyPair, signNodeRequest } from "@adc/client/node";
 import { MemoryStore } from "@adc/db";
 import {
@@ -120,6 +120,164 @@ afterEach(async () => {
 });
 
 describe("control plane", () => {
+  async function waitFixture(
+    allowedTools: Array<"file.read" | "task.wait"> = ["file.read", "task.wait"]
+  ) {
+    const setup = await fixture();
+    await setup.node.poll(setup.capability);
+    await setup.owner.createAccess({
+      grantId: "grant_example",
+      actorId: "actor_testagent",
+      name: "Wait agent",
+      profile: "read-only",
+      nodeIds: [setup.paired.nodeId],
+      rootAccess: "selected",
+      rootIds: ["root_workspace"],
+      approvalPolicy: "never",
+      allowedTools
+    });
+    const invocation = buildInvocation({
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: [setup.paired.nodeId],
+        rootIds: ["root_workspace"]
+      },
+      tool: "file.read",
+      args: { rootId: "root_workspace", path: "README.md" },
+      source: "sdk"
+    });
+    const agent = new AdcClient("http://adc.test", "approval-agent-token", setup.fetcher);
+    return { ...setup, invocation, agent };
+  }
+
+  it("waits on the submitted invocation and reuses it after completion", async () => {
+    const { agent, node, capability, invocation, store } = await waitFixture();
+    const waiting = agent.invoke(invocation, { waitMs: 2000 });
+    const polled = await node.poll(capability, { waitMs: 2000 });
+    const dispatch = polled.dispatch!;
+    await node.acknowledge(dispatch.dispatchId, dispatch.leaseToken);
+    await node.complete({
+      dispatchId: dispatch.dispatchId,
+      leaseToken: dispatch.leaseToken,
+      result: {
+        schemaVersion: "0.1",
+        invocationId: invocation.invocationId,
+        attemptId: invocation.attemptId,
+        status: "succeeded",
+        output: { text: "ready" }
+      }
+    });
+    await expect(waiting).resolves.toMatchObject({
+      status: "succeeded",
+      output: { text: "ready" }
+    });
+    await expect(
+      agent.invoke(
+        {
+          ...invocation,
+          expiresAt: new Date(Date.now() - 1).toISOString()
+        },
+        { waitMs: 0 }
+      )
+    ).resolves.toMatchObject({ status: "succeeded" });
+    expect((await store.getDispatchByInvocation(invocation.invocationId))?.dispatchId).toBe(
+      dispatch.dispatchId
+    );
+    await expect(node.poll(capability)).resolves.toMatchObject({ dispatch: null });
+  });
+
+  it("returns completion from the HTTP MCP tool call", async () => {
+    const { app, node, paired, capability } = await waitFixture(["file.read"]);
+    const waiting = app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: "Bearer approval-agent-token",
+        accept: "application/json, text/event-stream"
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "file.read",
+          arguments: {
+            args: { rootId: "root_workspace", path: "README.md" },
+            target: { nodeId: paired.nodeId }
+          }
+        }
+      }
+    });
+    const dispatch = (await node.poll(capability, { waitMs: 2000 })).dispatch!;
+    expect(dispatch).toBeDefined();
+    await node.acknowledge(dispatch.dispatchId, dispatch.leaseToken);
+    await node.complete({
+      dispatchId: dispatch.dispatchId,
+      leaseToken: dispatch.leaseToken,
+      result: {
+        schemaVersion: "0.1",
+        invocationId: dispatch.invocation.invocationId,
+        attemptId: dispatch.invocation.attemptId,
+        status: "succeeded",
+        output: { text: "mcp-ready" }
+      }
+    });
+    const response = await waiting;
+    expect(response.statusCode).toBe(200);
+    expect(response.json().result.structuredContent).toMatchObject({
+      status: "succeeded",
+      output: { text: "mcp-ready" }
+    });
+  });
+
+  it("wait expiry keeps the task alive and task.wait resumes it", async () => {
+    const { agent, invocation, fetcher } = await waitFixture();
+    const queued = await agent.invoke(invocation, { waitMs: 10 });
+    expect(queued.status).toBe("queued");
+    const other = new AdcClient("http://adc.test", "other-agent-token", fetcher);
+    await expect(other.taskWait(queued.jobId!, 2000)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(agent.taskWait(queued.jobId!, 0)).resolves.toMatchObject({ status: "queued" });
+    await expect(
+      agent.invoke(
+        buildInvocation({
+          context: {
+            accountId: invocation.accountId,
+            actorId: invocation.actor.id,
+            grantId: invocation.authorization.grantId,
+            nodeIds: ["node_placeholder"],
+            rootIds: []
+          },
+          tool: "task.wait",
+          args: { jobId: queued.jobId, waitMs: 10 },
+          source: "sdk"
+        })
+      )
+    ).resolves.toMatchObject({ status: "succeeded", output: { task: { status: "queued" } } });
+    await expect(agent.taskWait(queued.jobId!, 30_001)).rejects.toThrow();
+  });
+
+  it("denies a result when the grant is revoked during a wait", async () => {
+    const { agent, invocation, owner, node, capability } = await waitFixture();
+    const waiting = agent.invoke(invocation, { waitMs: 2000 });
+    const dispatch = (await node.poll(capability, { waitMs: 2000 })).dispatch!;
+    await node.acknowledge(dispatch.dispatchId, dispatch.leaseToken);
+    await owner.revokeAccess("grant_example");
+    await node.complete({
+      dispatchId: dispatch.dispatchId,
+      leaseToken: dispatch.leaseToken,
+      result: {
+        schemaVersion: "0.1",
+        invocationId: invocation.invocationId,
+        attemptId: invocation.attemptId,
+        status: "succeeded",
+        output: {}
+      }
+    });
+    await expect(waiting).rejects.toThrow();
+  });
+
   it("holds an idle long poll and marks the supported response", async () => {
     const { node, capability } = await fixture();
     const startedAt = Date.now();

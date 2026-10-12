@@ -457,23 +457,15 @@ describe("McpInvocationAdapter", () => {
   });
 
   it("returns quick task completion without a second MCP call", async () => {
-    let checks = 0;
+    const waits: number[] = [];
     const adapter = new McpInvocationAdapter({
       client: {
-        invoke: async (invocation) =>
-          ResultSchema.parse({
+        invoke: async (invocation, options) => {
+          waits.push(options?.waitMs ?? -1);
+          return ResultSchema.parse({
             schemaVersion: "0.1",
             invocationId: invocation.invocationId,
             attemptId: invocation.attemptId,
-            status: "queued",
-            jobId: "job_quick"
-          }),
-        taskStatus: async () => {
-          checks += 1;
-          return ResultSchema.parse({
-            schemaVersion: "0.1",
-            invocationId: "inv_quick",
-            attemptId: "att_quick",
             status: "succeeded",
             output: { performed: true }
           });
@@ -491,6 +483,20 @@ describe("McpInvocationAdapter", () => {
     await expect(
       adapter.invoke("ui.inspect", { args: {}, target: { nodeId: "node_phone" } })
     ).resolves.toMatchObject({ status: "succeeded" });
-    expect(checks).toBe(1);
+    expect(waits).toEqual([500]);
+    await adapter.invoke("ui.inspect", {
+      args: {},
+      target: { nodeId: "node_phone" },
+      waitMs: 0,
+      executionTimeoutMs: 1000
+    });
+    expect(waits).toEqual([500, 0]);
+    await expect(
+      adapter.invoke("ui.inspect", {
+        args: {},
+        target: { nodeId: "node_phone" },
+        waitMs: 30_001
+      })
+    ).rejects.toThrow();
   });
 });

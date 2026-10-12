@@ -38,9 +38,9 @@ Usage:
   adc project list|create|roots|root-add
   adc tool list|show [TOOL]
   adc invoke TOOL --args JSON [--node DEVICE] [--wait [MILLISECONDS]]
-             [--idempotency-key KEY]
+             [--idempotency-key KEY] [--execution-timeout MILLISECONDS]
   adc invocation status INVOCATION
-  adc task status|result|cancel JOB
+  adc task status|result|wait|cancel JOB [--wait MILLISECONDS]
   adc artifact get ID
   adc audit show|list
   adc mcp
@@ -98,24 +98,6 @@ function exitCode(result: InvocationResult): number {
   if (result.status === "unknown_outcome") return 23;
   if (result.status === "cancelled") return 24;
   return 1;
-}
-
-async function waitForResult(
-  client: Pick<AdcClient, "taskStatus">,
-  initial: InvocationResult,
-  timeoutMs: number
-): Promise<InvocationResult> {
-  const jobId = initial.jobId;
-  if (!jobId || timeoutMs <= 0) return initial;
-  const deadline = Date.now() + timeoutMs;
-  let result = initial;
-  let delay = 50;
-  while (["queued", "running"].includes(result.status) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(delay, deadline - Date.now())));
-    result = await client.taskStatus(jobId);
-    delay = Math.min(delay * 2, 400);
-  }
-  return result;
 }
 
 function print(value: unknown, json: boolean): void {
@@ -341,13 +323,16 @@ async function main(): Promise<void> {
           : {}),
       source: stringFlag(flags, "source") === "skill" ? "skill" : "cli",
       ...(idempotencyKey ? { idempotencyKey } : {}),
+      ...(stringFlag(flags, "execution-timeout")
+        ? { executionTimeoutMs: Number(stringFlag(flags, "execution-timeout")) }
+        : {}),
       ...(stringFlag(flags, "timeout") ? { timeoutMs: Number(stringFlag(flags, "timeout")) } : {})
     });
     const wait = flags.get("wait");
-    const waitMs = wait === true ? 1_500 : typeof wait === "string" ? Number(wait) : 0;
+    const waitMs = wait === true ? 4000 : typeof wait === "string" ? Number(wait) : 0;
     if (!Number.isFinite(waitMs) || waitMs < 0 || waitMs > 30_000)
       throw new Error("--wait must be between 0 and 30000 milliseconds");
-    const result = await waitForResult(client, await client.invoke(invocation), waitMs);
+    const result = await client.invoke(invocation, { waitMs });
     print(result, json);
     process.exitCode = exitCode(result);
     return;
@@ -360,11 +345,15 @@ async function main(): Promise<void> {
     process.exitCode = exitCode(result);
     return;
   }
-  if (domain === "task" && (action === "status" || action === "result" || action === "cancel")) {
+  if (domain === "task" && ["status", "result", "wait", "cancel"].includes(action ?? "")) {
     const jobId = positionals[2];
     if (!jobId) throw new Error("job id is required");
     const result =
-      action === "cancel" ? await client.cancelTask(jobId) : await client.taskStatus(jobId);
+      action === "cancel"
+        ? await client.cancelTask(jobId)
+        : action === "wait"
+          ? await client.taskWait(jobId, Number(stringFlag(flags, "wait") ?? 4000))
+          : await client.taskStatus(jobId);
     print(result, json);
     process.exitCode = exitCode(result);
     return;

@@ -277,6 +277,7 @@ adc invoke shell.exec --node node_example \
   --idempotency-key test-workspace-once --json
 adc invocation status <invocation-id> --json
 adc task status <job-id> --json
+adc task wait <job-id> --wait 4000 --json
 adc artifact get <artifact-id> --output ./artifact.log --json
 adc audit show <invocation-id> --json
 adc update --check --json

@@ -52,7 +52,8 @@ const readTools = [
   "file.search",
   "command.template.list",
   "task.status",
-  "task.result"
+  "task.result",
+  "task.wait"
 ];
 const fileTools = ["file.write", "file.edit", "file.patch"];
 const runTools = ["shell.exec", "command.template.run", "test.run", "task.cancel"];

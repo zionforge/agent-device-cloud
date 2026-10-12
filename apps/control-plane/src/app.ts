@@ -34,6 +34,7 @@ import {
   ResultSchema,
   ToolIdSchema,
   ToolNameSchema,
+  WaitMsSchema,
   absolutePathForToolArgs,
   assertInvocationCurrent,
   createId,
@@ -68,6 +69,7 @@ import {
   type NodeReleaseSummary
 } from "./distribution.ts";
 import { NodeWakeHub } from "./node-wake.ts";
+import { TaskWaitHub } from "./task-wait.ts";
 import { PublicSite, type HostedAnalyticsOptions } from "./public-site.ts";
 import type { AssetStore } from "./asset-store.ts";
 
@@ -1087,6 +1089,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       if (!completed) {
         return apiError(reply, 409, ErrorCodes.LEASE_EXPIRED, "lease is invalid or superseded");
       }
+      taskWaitHub.notify(completed.dispatchId);
       countInvocation(completed.status, completed.invocation.tool);
       return { accepted: true, status: completed.status };
     }
@@ -1157,9 +1160,73 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     }
   );
 
-  async function invoke(invocation: Invocation, principal: Principal): Promise<InvocationResult> {
+  const taskWaitHub = new TaskWaitHub();
+  const waitQuery = z.object({ waitMs: z.coerce.number().pipe(WaitMsSchema).default(0) });
+
+  async function authorizeTask(
+    principal: Principal,
+    task: DispatchRecord,
+    originalInvocation = false
+  ): Promise<void> {
+    if (
+      task.invocation.accountId !== principal.accountId ||
+      (principal.kind === "agent" && task.invocation.authorization.grantId !== principal.grantId)
+    )
+      throw new ProtocolError(ErrorCodes.DENIED, "Task is not visible.", false);
+    if (principal.kind !== "agent") return;
+    const grant = await options.store.getGrant(principal.grantId);
+    if (
+      !grant ||
+      grant.revokedAt ||
+      grant.accountId !== principal.accountId ||
+      !(originalInvocation
+        ? grant.allowedTools.includes(task.invocation.tool)
+        : grant.allowedTools.some((tool) =>
+            ["task.status", "task.result", "task.wait"].includes(tool)
+          ))
+    )
+      throw new ProtocolError(ErrorCodes.DENIED, "Task results are not granted.", false);
+  }
+
+  async function waitTask(
+    task: DispatchRecord,
+    principal: Principal,
+    waitMs: number,
+    signal?: AbortSignal,
+    originalInvocation = false
+  ): Promise<InvocationResult> {
+    return taskWaitHub.wait(
+      task.dispatchId,
+      async () => {
+        const current = await options.store.getDispatchById(task.dispatchId);
+        if (!current) throw new ProtocolError(ErrorCodes.NOT_FOUND, "Task was not found.", false);
+        await authorizeTask(principal, current, originalInvocation);
+        return current.result ?? queuedResult(current);
+      },
+      (result) => ["queued", "running"].includes(result.status),
+      waitMs,
+      signal
+    );
+  }
+
+  function requestSignal(request: FastifyRequest, reply: FastifyReply): AbortSignal {
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    request.raw.once("aborted", abort);
+    reply.raw.once("close", abort);
+    reply.raw.once("finish", () => {
+      request.raw.removeListener("aborted", abort);
+      reply.raw.removeListener("close", abort);
+    });
+    return controller.signal;
+  }
+
+  async function invoke(
+    invocation: Invocation,
+    principal: Principal,
+    signal?: AbortSignal
+  ): Promise<InvocationResult> {
     const accountId = principal.accountId;
-    assertInvocationCurrent(invocation, now());
     countInvocation("submitted", invocation.tool);
     if (invocation.accountId !== accountId) {
       throw new ProtocolError(ErrorCodes.DENIED, "account scope mismatch", false);
@@ -1203,13 +1270,16 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         args: value.args,
         authorization: value.authorization,
         target: value.target,
-        idempotencyKey: value.idempotencyKey
+        idempotencyKey: value.idempotencyKey,
+        executionTimeoutMs: value.executionTimeoutMs
       });
       if (sha256(identity(existing.invocation)) !== sha256(identity(invocation))) {
         throw new ProtocolError("conflict", "Invocation ID has already been used.", false);
       }
+      await authorizeTask(principal, existing, true);
       return existing.result ?? queuedResult(existing);
     }
+    assertInvocationCurrent(invocation, now());
     if (!grant.allowedTools.includes(ToolIdSchema.parse(invocation.tool))) {
       return domainResult(invocation, "denied", {
         code: ErrorCodes.DENIED,
@@ -1266,6 +1336,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     if (
       invocation.tool === "task.status" ||
       invocation.tool === "task.result" ||
+      invocation.tool === "task.wait" ||
       invocation.tool === "task.cancel"
     ) {
       const jobId = (invocation.args as { jobId: string }).jobId;
@@ -1284,14 +1355,24 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       }
       if (invocation.tool === "task.cancel") {
         task = await options.store.requestCancel(task.dispatchId, now());
+        taskWaitHub.notify(dispatchId!);
       }
+      const result =
+        task && invocation.tool !== "task.cancel"
+          ? await waitTask(
+              task,
+              principal,
+              invocation.tool === "task.wait" ? (invocation.args as { waitMs: number }).waitMs : 0,
+              signal
+            )
+          : (task?.result ?? (task ? queuedResult(task) : undefined));
       countInvocation("succeeded", invocation.tool);
       return ResultSchema.parse({
         schemaVersion: "0.1",
         invocationId: invocation.invocationId,
         attemptId: invocation.attemptId,
         status: "succeeded",
-        output: { task: task?.result ?? (task ? queuedResult(task) : undefined) }
+        output: { task: result }
       });
     }
     const placement = await placeInvocation(options.store, invocation, grant);
@@ -1380,8 +1461,25 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     return queued.result ?? queuedResult(queued);
   }
 
-  app.post("/api/v1/invocations", { preHandler: requireAuthenticated }, async (request) =>
-    invoke(InvocationSchema.parse(request.body), principals.get(request)!)
+  async function invokeAndWait(
+    invocation: Invocation,
+    principal: Principal,
+    waitMs = 0,
+    signal?: AbortSignal
+  ) {
+    const result = await invoke(invocation, principal, signal);
+    if (!result.jobId || !["queued", "running"].includes(result.status) || !waitMs) return result;
+    const task = await options.store.getDispatchByInvocation(result.invocationId);
+    return task ? waitTask(task, principal, WaitMsSchema.parse(waitMs), signal, true) : result;
+  }
+
+  app.post("/api/v1/invocations", { preHandler: requireAuthenticated }, async (request, reply) =>
+    invokeAndWait(
+      InvocationSchema.parse(request.body),
+      principals.get(request)!,
+      waitQuery.parse(request.query).waitMs,
+      requestSignal(request, reply)
+    )
   );
 
   function visibleTask(request: FastifyRequest, dispatch: DispatchRecord | undefined) {
@@ -1406,15 +1504,12 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         if (!visibleTask(request, dispatch)) {
           return apiError(reply, 404, ErrorCodes.NOT_FOUND, "invocation was not found");
         }
-        if (principal.kind === "agent") {
-          const grant = await options.store.getGrant(principal.grantId);
-          if (
-            !grant?.allowedTools.some((tool) => tool === "task.status" || tool === "task.result")
-          ) {
-            return apiError(reply, 403, ErrorCodes.DENIED, "Task results are not granted.");
-          }
-        }
-        return dispatch.result ?? queuedResult(dispatch);
+        return waitTask(
+          dispatch,
+          principal,
+          waitQuery.parse(request.query).waitMs,
+          requestSignal(request, reply)
+        );
       }
 
       const approval = await options.store.getApprovalByInvocation(invocationId);
@@ -1460,14 +1555,12 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     if (!dispatch || !visibleTask(request, dispatch)) {
       return apiError(reply, 404, ErrorCodes.NOT_FOUND, "task was not found");
     }
-    const actor = principals.get(request)!;
-    if (actor.kind === "agent") {
-      const grant = await options.store.getGrant(actor.grantId);
-      if (!grant?.allowedTools.some((tool) => tool === "task.status" || tool === "task.result")) {
-        return apiError(reply, 403, ErrorCodes.DENIED, "Task results are not granted.");
-      }
-    }
-    return dispatch.result ?? queuedResult(dispatch);
+    return waitTask(
+      dispatch,
+      principals.get(request)!,
+      waitQuery.parse(request.query).waitMs,
+      requestSignal(request, reply)
+    );
   });
 
   app.post(
@@ -1488,6 +1581,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         return apiError(reply, 403, ErrorCodes.DENIED, "Task cancellation is not granted.");
       }
       const dispatch = (await options.store.requestCancel(current.dispatchId, now()))!;
+      taskWaitHub.notify(dispatch.dispatchId);
       if (dispatch.status === "cancelled" || dispatch.status === "cancel_requested") {
         await options.store.putAudit({
           eventId: createId("dsp"),
@@ -1736,7 +1830,10 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       return apiError(reply, 403, ErrorCodes.DENIED, "Agent authorization is unavailable.");
     }
     const server = createMcpServer({
-      client: { invoke: (invocation) => invoke(invocation, principal) },
+      client: {
+        invoke: (invocation, options) =>
+          invokeAndWait(invocation, principal, options?.waitMs, options?.signal)
+      },
       context: grantContext(grant, await options.store.listNodes(grant.accountId)),
       allowedTools: grant.allowedTools
     });
@@ -1819,7 +1916,9 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     app.get("/*", serveConsole);
   }
 
+  app.addHook("preClose", async () => taskWaitHub.close());
   app.addHook("onClose", async () => {
+    taskWaitHub.close();
     wakeHub.close();
     await options.store.close();
   });

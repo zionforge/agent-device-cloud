@@ -64,9 +64,19 @@ The live schema is authoritative. These examples show the protocol 0.1 shapes:
 | `test.run`              | `{"cwd":"/absolute/folder","templateId":"test","timeoutMs":300000}`                           |
 | `task.status`           | `{"jobId":"job_example"}`                                                                     |
 | `task.result`           | `{"jobId":"job_example"}`                                                                     |
+| `task.wait`             | `{"jobId":"job_example","waitMs":4000}`                                                       |
 | `task.cancel`           | `{"jobId":"job_example"}`                                                                     |
 
 Optional fields may be omitted. Do not send undocumented fields because tool arguments are strict.
+MCP calls accept `waitMs` (0–30000, default 4000) alongside `args` and `target`.
+CLI calls use `--wait 4000`; SDK calls use `client.invoke(invocation, { waitMs: 4000 })`.
+Waiting returns a terminal result or the current task state without cancelling or restarting it.
+Continue with `task.wait`, `adc task wait JOB --wait 4000 --json`, or `client.taskWait(jobId)`.
+
+Use `executionTimeoutMs` in MCP or `--execution-timeout` in CLI only when a total budget is needed.
+It accepts 100–1800000 ms from submission, including queue time, and requests cooperative cancellation
+on expiry. Waiting never extends this budget. Existing tool-specific `args.timeoutMs` still applies.
+Existing grants must explicitly include `task.wait` to expose that tool.
 Use `--args @/absolute/input.json` when shell quoting would make a large JSON value unsafe or
 ambiguous, and remove temporary inputs that contain sensitive data.
 

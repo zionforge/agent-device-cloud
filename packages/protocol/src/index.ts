@@ -2,6 +2,12 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 
 export const PROTOCOL_VERSION = "0.1" as const;
+export const WaitMsSchema = z.number().int().min(0).max(30_000);
+export const ExecutionTimeoutMsSchema = z
+  .number()
+  .int()
+  .min(100)
+  .max(30 * 60_000);
 
 export const ErrorCodes = {
   INVALID_REQUEST: "invalid_request",
@@ -464,6 +470,7 @@ export const ToolArgsSchemas = {
   ]),
   "task.status": z.object({ jobId: JobIdSchema }).strict(),
   "task.result": z.object({ jobId: JobIdSchema }).strict(),
+  "task.wait": z.object({ jobId: JobIdSchema, waitMs: WaitMsSchema.default(4000) }).strict(),
   "task.cancel": z.object({ jobId: JobIdSchema }).strict()
 } as const;
 
@@ -567,7 +574,8 @@ export const ReadOnlyTools: ReadonlySet<ToolName> = new Set([
   "file.search",
   "command.template.list",
   "task.status",
-  "task.result"
+  "task.result",
+  "task.wait"
 ]);
 
 export const ControlPlaneTools: ReadonlySet<ToolName> = new Set([
@@ -575,6 +583,7 @@ export const ControlPlaneTools: ReadonlySet<ToolName> = new Set([
   "device.status",
   "task.status",
   "task.result",
+  "task.wait",
   "task.cancel"
 ]);
 
@@ -643,6 +652,7 @@ const InvocationBaseSchema = z
       .strict(),
     issuedAt: z.iso.datetime({ offset: true }),
     expiresAt: z.iso.datetime({ offset: true }),
+    executionTimeoutMs: ExecutionTimeoutMsSchema.optional(),
     idempotencyKey: z.string().min(8).max(256).optional(),
     metadata: z
       .object({

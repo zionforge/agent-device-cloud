@@ -120,6 +120,7 @@ export const documentedTools = [
   "test.run",
   "task.status",
   "task.result",
+  "task.wait",
   "task.cancel"
 ] as const;
 
@@ -1089,7 +1090,7 @@ function ToolReference() {
       purpose: "Run shell commands or locally configured command templates and tests."
     },
     {
-      tools: ["task.status", "task.result", "task.cancel"],
+      tools: ["task.status", "task.result", "task.wait", "task.cancel"],
       risk: "Varies",
       purpose: "Inspect or cancel asynchronous work."
     }

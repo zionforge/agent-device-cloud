@@ -84,6 +84,7 @@ const profileTools: Record<PolicyProfile, ReadonlySet<ToolName>> = {
     "test.run",
     "task.status",
     "task.result",
+    "task.wait",
     "task.cancel"
   ])
 };

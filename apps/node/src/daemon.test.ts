@@ -34,6 +34,68 @@ class TestWakeSource implements NodeWakeSource {
 }
 
 describe("NodeDaemon access reload", () => {
+  it("keeps the original execution deadline when dispatch starts late", async () => {
+    const daemon = new NodeDaemon({
+      controlPlaneUrl: "http://localhost:8787",
+      nodeId: "node_example",
+      privateKey: generateNodeKeyPair().privateKey,
+      roots: [root],
+      stateDirectory: "/unused/state",
+      leaseRenewIntervalMs: 10
+    });
+    const invocation = buildInvocation({
+      context: {
+        accountId: "acct_example",
+        actorId: "actor_example",
+        grantId: "grant_example",
+        nodeIds: ["node_example"],
+        rootIds: [root.rootId]
+      },
+      tool: "file.read",
+      args: { rootId: root.rootId, path: "a.txt" },
+      source: "sdk",
+      executionTimeoutMs: 1000
+    });
+    invocation.issuedAt = new Date(Date.now() - 950).toISOString();
+    vi.spyOn(daemon.api, "poll").mockResolvedValue({
+      dispatch: {
+        invocation,
+        policyDecision: allowed,
+        dispatchId: "dsp_example",
+        leaseToken: "lease"
+      }
+    });
+    vi.spyOn(daemon.api, "acknowledge").mockResolvedValue({
+      leaseExpiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+    vi.spyOn(daemon.api, "renewLease").mockResolvedValue({
+      leaseExpiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+    const complete = vi.spyOn(daemon.api, "complete").mockResolvedValue({});
+    vi.spyOn(daemon.runtime, "execute").mockImplementation(
+      async (_invocation, _decision, signal) => {
+        await new Promise<void>((resolve) => {
+          if (signal?.aborted) resolve();
+          else signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return {
+          schemaVersion: "0.1",
+          invocationId: invocation.invocationId,
+          attemptId: invocation.attemptId,
+          status: "cancelled"
+        };
+      }
+    );
+    const start = Date.now();
+    await daemon.runOnce();
+    expect(Date.now() - start).toBeLessThan(500);
+    expect(complete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        result: expect.objectContaining({ status: "cancelled" })
+      })
+    );
+  });
+
   it("advertises Windows roots by stable ID without leaking drive paths", () => {
     const daemon = new NodeDaemon({
       controlPlaneUrl: "http://localhost:8787",
