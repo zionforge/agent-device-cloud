@@ -72,6 +72,7 @@ import { NodeWakeHub } from "./node-wake.ts";
 import { TaskWaitHub } from "./task-wait.ts";
 import { PublicSite, type HostedAnalyticsOptions } from "./public-site.ts";
 import type { AssetStore } from "./asset-store.ts";
+import { registerSkillDistributionRoutes, type SkillDistribution } from "./skill-distribution.ts";
 
 export interface ControlPlaneOptions {
   store: Store;
@@ -83,6 +84,7 @@ export interface ControlPlaneOptions {
   consoleDirectory?: string;
   nodeDistribution?: NodeDistribution;
   androidDistribution?: AndroidDistribution;
+  skillDistribution?: SkillDistribution;
   trustProxy?: string[];
   /** Opt-in cross-origin origins for API consumers. See registerCors(). */
   corsOrigins?: string[] | "*";
@@ -1857,6 +1859,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
   });
 
   registerDistributionRoutes(app, options.nodeDistribution);
+  registerSkillDistributionRoutes(app, options.skillDistribution);
   registerAndroidDistributionRoutes(app, options.androidDistribution);
   app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => {
     const androidPreview = await androidPreviewInfo(options.androidDistribution);

@@ -1,7 +1,7 @@
 ---
 name: agent-device-cloud
-description: Operate Agent Device Cloud through its public CLIs. Use when asked to pair or manage ADC devices, invoke authorized device tools, track tasks, or troubleshoot ADC execution.
-version: 0.2.0
+description: Set up and operate Agent Device Cloud through public CLIs. Use when asked to get started with ADC, connect devices, manage access, invoke device tools, or track tasks.
+version: 0.3.0
 requirements:
   cli: "adc >=0.1.0 <0.2.0"
   protocol: "0.1"
@@ -24,11 +24,22 @@ device identity files, Connector state, or private poll, lease, ACK, receipt, an
 Read [account-and-device-management.md](references/account-and-device-management.md) only for an
 account-management or local Connector request.
 
+## First Use And Setup
+
+When asked to start using ADC, install its CLI, register, sign in, connect a first device or
+authorize this Agent, read [getting-started.md](references/getting-started.md). Guide the user
+through the missing steps and reuse existing devices and access.
+
+Installing this Skill does not register an account or grant access. Registration, browser sign-in
+and login-code confirmation belong to the user. Run authorized setup commands, then verify a
+scoped connection and a read-only tool result before reporting that ADC is ready.
+
 ## Start Every Tool Workflow
 
 1. Run `adc --version`, then `adc status --json`. Require `connection.authenticated: true`.
-   If it is false, tell the user that a scoped connection is required; do not request a password or
-   token.
+   If the CLI is missing or the connection is unauthenticated, explain the missing step and use
+   [getting-started.md](references/getting-started.md) when setup is requested. Do not request a
+   password or token, or switch to owner authority to bypass a tool denial.
 2. Run `adc node list --json`. Use only an active, online device and an absolute POSIX path listed
    in that device's authorized roots. If several devices qualify and the user did not select one,
    show the candidates and ask. Record the selected device's `platform`.
@@ -90,7 +101,8 @@ Exit 2 is a local usage/configuration error and is not retryable without correct
 - Do not access paths outside the advertised roots or use `..`, backslashes, duplicate separators
   or trailing slashes.
 - Do not use remote `shell.exec` to change Connector configuration.
-- Do not start persistent services or interactive terminal sessions.
+- Do not start persistent services or interactive terminal sessions through device tools. Local
+  Connector startup is allowed for the requested device setup in the getting-started reference.
 - Do not claim `restricted-process` is hard filesystem or network isolation. Full device trust uses
   the Connector user's OS authority.
 - Download artifacts only to a user-approved path that does not already contain unrelated data.

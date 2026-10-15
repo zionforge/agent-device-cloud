@@ -168,7 +168,7 @@ adc connect ACCESS
 adc node list --json
 adc invoke file.read --node node_example \\
   --args '{"path":"/Users/me/work/README.md"}' --json`,
-    Skill: "skills/agent-device-cloud/SKILL.md\n\nadc node list --json"
+    Skill: `npx skills@latest add ${origin} --skill agent-device-cloud`
   };
 
   return (
@@ -563,6 +563,12 @@ adc invoke file.read --node node_example \\
                 <pre>
                   <code>{snippets[method]}</code>
                 </pre>
+                {method === "Skill" ? (
+                  <a className="text-link" href="/downloads/skills/agent-device-cloud.zip" download>
+                    {t("Download official Skill ZIP")}
+                    <ArrowRight size={16} />
+                  </a>
+                ) : null}
               </div>
             </div>
           </div>

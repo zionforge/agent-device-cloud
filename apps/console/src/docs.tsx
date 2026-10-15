@@ -962,6 +962,7 @@ adc-node mcp remove github`}
 
 function Integrations() {
   const { t } = useI18n();
+  const copy = useDocCopy();
   const origin = typeof window === "undefined" ? "__ADC_PUBLIC_ORIGIN__" : window.location.origin;
   return (
     <>
@@ -1021,17 +1022,45 @@ adc invocation status INVOCATION_ID --json`}
       </Section>
       <Section id="skill" title={t("Official Skill")}>
         <p>
-          {t(
-            "Install the complete official Skill directory with your Agent host. It discovers live tools and devices, follows approvals and task results, and never reads device credentials."
+          {copy(
+            "Install directly from this website with the open-source skills installer. Choose your Agent host when prompted; no GitHub checkout is needed.",
+            "通过开源 skills 安装器直接从本站安装，按提示选择你的 Agent 宿主，无需去 GitHub 查找或下载仓库。"
           )}
         </p>
-        <CodeBlock label="Skill">
-          {`skills/agent-device-cloud/
-  SKILL.md
-  references/
-    account-and-device-management.md
-    tool-invocation.md`}
+        <CodeBlock label={copy("Install Skill", "安装 Skill")}>
+          {`npx skills@latest add ${origin} --skill agent-device-cloud`}
         </CodeBlock>
+        <p>
+          {copy(
+            "The installer requires Node.js 22.20 or later and npm. Add --global to use the Skill across projects. For hosts with a manual Skill importer, download the complete ZIP, extract it into an agent-device-cloud folder and import that folder, including references/.",
+            "安装器需要 Node.js 22.20 或更高版本及 npm；加上 --global 可供所有项目使用。如果宿主支持手动导入 Skill，可下载完整 ZIP，解压到 agent-device-cloud 文件夹后导入，保留 references/ 目录。"
+          )}
+        </p>
+        <a
+          className="secondary"
+          href={`${origin}/downloads/skills/agent-device-cloud.zip`}
+          download
+        >
+          {copy("Download official Skill ZIP", "下载官方 Skill ZIP")}
+        </a>
+        <p>
+          {copy(
+            "Once installed, ask your Agent to help you get started. The Skill checks your CLI and connection, guides registration or sign-in, reuses or pairs your device, creates the access you choose and verifies a first tool call. You complete browser sign-in and confirmation yourself.",
+            "安装后，直接让 Agent 帮你开始使用 ADC。Skill 会检查 CLI 和连接状态，引导注册或登录、复用或接入设备、配置你选择的授权，并验证首次工具调用。浏览器登录和确认由你本人完成。"
+          )}
+        </p>
+        <CodeBlock label={copy("First prompt", "首次使用提示")}>
+          {copy(
+            "Help me get started with ADC. Check my setup and guide me through connecting my device and authorizing this Agent.",
+            "帮我开始使用 ADC，检查当前配置，引导我连接设备并为这个 Agent 配置授权。"
+          )}
+        </CodeBlock>
+        <p>
+          {copy(
+            "After setup, ask naturally to read files, run authorized tasks, inspect results or manage devices. The Skill discovers live tools and devices and follows approvals and task receipts.",
+            "完成接入后，可以直接用自然语言让 Agent 读取文件、运行已授权的任务、查看结果或管理设备。Skill 会发现实时工具与设备，并跟踪审批、任务状态和执行凭证。"
+          )}
+        </p>
       </Section>
     </>
   );

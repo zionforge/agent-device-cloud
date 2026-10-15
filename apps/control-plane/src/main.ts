@@ -122,6 +122,11 @@ const app = await createControlPlane({
       fileURLToPath(new URL("../../../dist/android", import.meta.url)),
     publicUrl: publicURL
   },
+  skillDistribution: {
+    directory:
+      process.env.ADC_SKILL_RELEASE_DIR ??
+      fileURLToPath(new URL("../../../dist/skills", import.meta.url))
+  },
   ...(process.env.ADC_TRUSTED_PROXIES
     ? { trustProxy: process.env.ADC_TRUSTED_PROXIES.split(",") }
     : {})

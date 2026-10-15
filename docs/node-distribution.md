@@ -17,6 +17,17 @@ On Windows 10/11 x64, select **Windows PowerShell** in the console. Its generate
 a Unix shell or a preinstalled Node.js. Selecting **WSL** installs the Linux connector inside WSL;
 that is a separate node and does not provide native Windows process or startup behavior.
 
+To use ADC from an Agent host before connecting a device, install just the public CLI:
+
+```sh
+curl -fsSL https://adc.zioon.tech/downloads/node/install.sh | sh -s -- --cli-only
+```
+
+For Windows, download the same origin's `install.ps1` and run it with `-CliOnly`.
+This installs the bundled runtime and launchers without pairing, creating device identity or
+starting a Connector. A later normal installation command pairs the device. Existing paired
+identity is preserved in CLI-only mode. Pairing and folder flags cannot be combined with this mode.
+
 For unattended setup, add `--label my-device --access none|home|full`, or
 `--label my-device --root-path /absolute/workspace`. The default folder ID
 is `root_workspace`; `--root-id root_other` overrides it. `--read-only` prevents write/execution

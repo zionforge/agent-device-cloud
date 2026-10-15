@@ -511,6 +511,7 @@ export const zh = {
   "Token-based MCP": "Token 模式 MCP",
   "Access-key MCP": "访问密钥模式 MCP",
   "Official Skill": "官方 Skill",
+  "Download official Skill ZIP": "下载官方 Skill ZIP",
   "Install the complete official Skill directory with your Agent host. It discovers live tools and devices, follows approvals and task results, and never reads device credentials.":
     "请通过 Agent 宿主安装完整的官方 Skill 目录。它会发现实时工具与设备、跟踪审批和任务结果，并且不会读取设备凭据。",
   "Tools use the same schemas and policy path across HTTP, CLI, MCP, SDK and Skill.":
@@ -623,7 +624,7 @@ export const zh = {
     "将此地址添加到支持 OAuth 的 MCP 客户端。登录后选择授权；也可以使用 Agent Token 连接。",
   "CLI description": "在终端登录后直接调用。单设备授权自动选择设备，多设备时指定目标。",
   "Skill description":
-    "让 Agent 加载官方 Skill，使用 CLI 发现设备、读取文件和运行任务，沿用相同的权限与执行记录。",
+    "一条命令安装后，让 Agent 帮你开始使用 ADC。Skill 会引导登录、设备接入和授权，后续通过自然语言调用已授权的工具。",
   "Ready when you are.": "随时，开始连接。",
   "Give your agent a place to do real work.": "让 Agent 在你的设备上，完成真实的工作。",
   "Private devices. Shared possibilities.": "私有设备，无限可能。",
@@ -960,7 +961,7 @@ export const catalogs: Record<Locale, Record<Message, string>> = {
     "CLI description":
       "Sign in from your terminal and call tools directly. A single authorized device is selected automatically; specify a target for multiple devices.",
     "Skill description":
-      "Load the official Skill so your agent can discover devices, read files and run tasks through the CLI, with the same permissions and receipts."
+      "Install with one command, then ask your agent to get started with ADC. The Skill guides sign-in, device setup and access, then handles authorized tools through natural-language requests."
   }
 };
 function initialLocale(): Locale {

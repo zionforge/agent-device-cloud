@@ -213,6 +213,7 @@ describe("released device installer over HTTP", () => {
     expect(windowsInstallerSource).toContain("Expand-Archive");
     expect(windowsInstallerSource).toContain("REM ADC managed launcher");
     expect(windowsInstallerSource).toContain(".adc-managed-user-path");
+    expect(windowsInstallerSource).toContain("[switch]$CliOnly");
     expect(windowsInstallerSource).not.toContain("@ADC_");
     const windowsArchive = await fetch(
       `${origin}/downloads/node/adc-${releaseVersion}-win32-x64-0123456789abcdef.zip`
@@ -220,6 +221,22 @@ describe("released device installer over HTTP", () => {
     expect(windowsArchive.status).toBe(200);
     expect(windowsArchive.headers.get("content-type")).toContain("application/zip");
     expect((await fetch(`${origin}/downloads/node/missing.tar.gz`)).status).toBe(404);
+    const cliOnly = await install(["--cli-only"]);
+    expect(cliOnly.code, `${cliOnly.stderr}\n${cliOnly.stdout}`).toBe(0);
+    expect(existsSync(env.ADC_NODE_CONFIG!)).toBe(false);
+    expect(existsSync(env.ADC_SERVICE_DIR!)).toBe(false);
+    expect(await getNodes()).toHaveLength(0);
+    expect((await cli(["--version"])).stdout.trim()).toBe(releaseVersion);
+    const status = await cli(["status", "--json"]);
+    expect(status.code, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout)).toMatchObject({
+      login: { authenticated: false },
+      connection: { authenticated: false }
+    });
+    const conflicted = await install(["--cli-only", "--code", pairing.code]);
+    expect(conflicted.code).not.toBe(0);
+    expect(conflicted.stderr).toContain("cannot be combined");
+    expect(await getNodes()).toHaveLength(0);
     const rootPath = resolve(directory, "user ' $literal & spaces/workspace");
     await mkdir(resolve(env.ADC_INSTALL_DIR!, ".install-lock"), { recursive: true });
     await writeFile(resolve(env.ADC_INSTALL_DIR!, ".adc-installation"), "Agent Device Cloud\n");
@@ -234,6 +251,10 @@ describe("released device installer over HTTP", () => {
     ]);
     expect(installed.code, `${installed.stderr}\n${installed.stdout}`).toBe(0);
     const original = await readFile(env.ADC_NODE_CONFIG!, "utf8");
+    const pairedCliOnly = await install(["--cli-only"]);
+    expect(pairedCliOnly.code, pairedCliOnly.stderr).toBe(0);
+    expect(await readFile(env.ADC_NODE_CONFIG!, "utf8")).toBe(original);
+    expect(await getNodes()).toHaveLength(1);
     expect((await stat(env.ADC_NODE_CONFIG!)).mode & 0o777).toBe(0o600);
     const runtimePathExport = 'export PATH="$ADC_INSTALL_DIR/current/runtime/bin${PATH:+:$PATH}"';
     expect(await readFile(resolve(env.ADC_BIN_DIR!, "adc"), "utf8")).toContain(runtimePathExport);

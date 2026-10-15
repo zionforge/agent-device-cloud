@@ -13,10 +13,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm schema:check && tsc --noEmit && pnpm --filter @adc/console build",
+    "build": "pnpm schema:check && tsc --noEmit && pnpm build:skill && pnpm --filter @adc/console build",
     "build:node": "tsx scripts/build-node.ts",
+    "build:skill": "tsx scripts/build-skill.ts",
     "publish:android": "tsx scripts/publish-android-release.ts",
-    "dev": "pnpm --filter @adc/console build && node --env-file-if-exists=.env --import tsx --watch apps/control-plane/src/main.ts",
+    "dev": "pnpm build:skill && pnpm --filter @adc/console build && node --env-file-if-exists=.env --import tsx --watch apps/control-plane/src/main.ts",
     "start": "node --env-file-if-exists=.env --import tsx apps/control-plane/src/main.ts",
     "format:check": "prettier --check .",
     "lint": "eslint .",

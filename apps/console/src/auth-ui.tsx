@@ -3,6 +3,7 @@ import { Cable, Github, LoaderCircle, MailCheck, RotateCw } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { analyticsEventForRequest, trackAnalytics } from "./analytics.tsx";
 import { LanguageSelector, translateError, useI18n, type Message } from "./i18n.tsx";
+import { authNavigation } from "./auth-navigation.ts";
 
 export type Request = (path: string, init?: RequestInit) => Promise<any>;
 export interface User {
@@ -185,21 +186,7 @@ export function AuthPage({
   const { t } = useI18n();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
-  const oauth = params.has("client_id") && params.has("sig");
-  const oauthSearch = oauth
-    ? `?${location.search
-        .slice(1)
-        .split("&")
-        .filter((part) => !/^(error|error_description|verification)=/.test(part))
-        .join("&")}`
-    : "";
-  const requestedReturnTo = params.get("return_to");
-  const returnTo =
-    requestedReturnTo?.startsWith("/cli-login?") &&
-    !requestedReturnTo.includes("\\") &&
-    !requestedReturnTo.includes("\n")
-      ? requestedReturnTo
-      : undefined;
+  const { oauth, oauthSearch, returnTo, authSearch } = authNavigation(location.search);
   const mode =
     location.pathname === "/register"
       ? "register"
@@ -501,22 +488,22 @@ export function AuthPage({
           <button className="text-link" type="button" onClick={() => setResetEmail("")}>
             {t("Try another email")}
           </button>
-          <Link className="secondary" to={`/login${oauthSearch}`}>
+          <Link className="secondary" to={`/login${authSearch}`}>
             {t("Back to sign in")}
           </Link>
         </div>
       ) : passwordResetComplete ? (
         <div className="auth-completion">
-          <Link className="primary" to={`/login${oauthSearch}`}>
+          <Link className="primary" to={`/login${authSearch}`}>
             {t("Sign in")}
           </Link>
         </div>
       ) : invalidResetLink ? (
         <div className="auth-completion">
-          <Link className="primary" to="/forgot-password">
+          <Link className="primary" to={`/forgot-password${authSearch}`}>
             {t("Request a new reset link")}
           </Link>
-          <Link className="text-link" to={`/login${oauthSearch}`}>
+          <Link className="text-link" to={`/login${authSearch}`}>
             {t("Back to sign in")}
           </Link>
         </div>
@@ -583,12 +570,12 @@ export function AuthPage({
       )}
       {!completed ? (
         <div className="auth-links">
-          {mode !== "login" ? <Link to={`/login${oauthSearch}`}>{t("Sign in")}</Link> : null}
+          {mode !== "login" ? <Link to={`/login${authSearch}`}>{t("Sign in")}</Link> : null}
           {mode === "login" && config?.registrationEnabled ? (
-            <Link to={`/register${oauthSearch}`}>{t("Create account")}</Link>
+            <Link to={`/register${authSearch}`}>{t("Create account")}</Link>
           ) : null}
           {mode === "login" && config?.passwordResetEnabled ? (
-            <Link to="/forgot-password">{t("Forgot password?")}</Link>
+            <Link to={`/forgot-password${authSearch}`}>{t("Forgot password?")}</Link>
           ) : null}
         </div>
       ) : null}

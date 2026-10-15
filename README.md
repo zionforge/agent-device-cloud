@@ -333,10 +333,25 @@ Token-based MCP clients can use:
 }
 ```
 
-The [official Skill](skills/agent-device-cloud/SKILL.md) orchestrates public CLI operations. Install
-the complete `skills/agent-device-cloud` directory with the Agent host's Skill installer; the
-`references/` files are part of the contract, and a source checkout is not automatically visible to
-every Agent host.
+Install the [official Skill](skills/agent-device-cloud/SKILL.md) directly from the hosted service:
+
+```sh
+npx skills@latest add https://adc.zioon.tech --skill agent-device-cloud
+```
+
+Choose your Agent host when prompted; add `--global` to install across projects. The installer
+requires Node.js 22.20 or later and npm. You can also [download the complete Skill ZIP](https://adc.zioon.tech/downloads/skills/agent-device-cloud.zip),
+extract it into an `agent-device-cloud` directory and import that directory with your host.
+Keep all `references/` files. No GitHub checkout is required.
+
+Then ask: **Help me get started with ADC. Check my setup, connect my device and authorize this Agent.**
+The Skill installs a missing ADC CLI using its bundled runtime, guides browser registration or
+sign-in, reuses or pairs devices, connects selected access and verifies a first read-only tool call.
+The user completes browser sign-in and confirms the login code. Installing the Skill itself does
+not grant device access. Later requests use live discovery, approvals, task tracking and receipts.
+Self-hosted builds publish the same discovery endpoints and ZIP through `pnpm build:skill` (also
+included in `pnpm build`); replace the hosted origin with your installation's origin.
+
 SDK callers use `AdcClient`, `buildInvocation` and the same scoped Agent token. All four entry points
 use the same authorization, placement and receipt path. Side effects require a stable idempotency key.
 CLI exits 20–24 represent denied, approval required, offline, unknown outcome and cancelled.

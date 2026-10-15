@@ -108,4 +108,18 @@ describe("documentation navigation", () => {
       waitMs: 4000
     });
   });
+
+  it.each(["en", "zh-CN"] as const)(
+    "publishes install commands, ZIP and onboarding in %s",
+    (locale) => {
+      const html = renderDocs("/docs/integrations", locale);
+      expect(html).toContain(
+        "npx skills@latest add __ADC_PUBLIC_ORIGIN__ --skill agent-device-cloud"
+      );
+      expect(html).toContain("/downloads/skills/agent-device-cloud.zip");
+      expect(html).toContain(locale === "en" ? "Help me get started with ADC" : "帮我开始使用 ADC");
+      expect(html).toContain("--global");
+      expect(html).toContain("references/");
+    }
+  );
 });
