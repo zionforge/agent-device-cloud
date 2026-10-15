@@ -558,7 +558,7 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
               installPlatform === "windows"
                 ? "Run this command in Windows PowerShell. No preinstalled curl, shell or Node.js is required."
                 : installPlatform === "android"
-                  ? "Download the preview APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node."
+                  ? "Download the Android APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node."
                   : installPlatform === "wsl"
                     ? "Run this command inside WSL to connect the Linux environment, not the Windows host."
                     : "Run this command in a terminal on your Mac or Linux device. Choose access during setup, or leave folders for later."
@@ -571,7 +571,7 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
             <span>
               {t(
                 installPlatform === "android"
-                  ? "Preview builds use a development signing key and do not participate in automatic updates."
+                  ? "This APK uses a development signing key and requires manual installation and updates."
                   : "Installs the connector and starts it in the background. Your device will appear below automatically."
               )}
             </span>
@@ -579,12 +579,12 @@ function Devices({ request, revision, refresh, onError }: PageProps) {
               installation?.androidPreviewUrl ? (
                 <a className="secondary" href={installation.androidPreviewUrl}>
                   <Download size={16} />
-                  {t("Download preview APK")}
+                  {t("Download Android APK")}
                 </a>
               ) : (
                 <button className="secondary" disabled>
                   <Download size={16} />
-                  {t("Android preview is not available on this installation.")}
+                  {t("Android APK is not available on this installation.")}
                 </button>
               )
             ) : (

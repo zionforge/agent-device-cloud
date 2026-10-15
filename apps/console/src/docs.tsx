@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useI18n, type Message } from "./i18n.tsx";
-import { PublicHeader, repositoryUrl } from "./public-header.tsx";
+import { PublicFooter, PublicHeader, repositoryUrl } from "./public-header.tsx";
 
 export type DocsPageId =
   | "overview"
@@ -83,7 +83,7 @@ const docsSummaries: Partial<Record<DocsPageId, Message>> = {
   troubleshooting: "Device is offline",
   roadmap: "A clear boundary between available and planned.",
   contributing: "Build and review changes",
-  changelog: "Version 0.1.1"
+  changelog: "Version 0.1.3"
 };
 
 export const documentedTools = [
@@ -239,7 +239,7 @@ function Quickstart() {
       <Section id="requirements" title={t("Before you begin")}>
         <p>
           {t(
-            "The hosted preview requires an account and a supported macOS, glibc Linux or Windows device. Installed connectors include their own Node.js runtime; Node.js 22 is only required for source development."
+            "Create an account and connect a macOS, glibc Linux or Windows device, or install ADC Mobile Node on Android. Desktop connectors include their own Node.js runtime; Node.js 22 is only required for source development."
           )}
         </p>
         <ul className="docs-checklist">
@@ -257,6 +257,12 @@ function Quickstart() {
             )}
           </li>
         </ul>
+        <p>
+          {copy(
+            "For Android, use Devices → Pair device → Android to download the APK. The current hosted APK uses development signing and requires manual installation and updates. Mobile capabilities depend on permissions enabled on the phone; compatibility is validated per model.",
+            "Android 用户可在「设备 → 配对设备 → Android」下载 APK。当前托管 APK 使用开发签名，安装和更新均需手动完成。移动端能力取决于手机上开启的权限，兼容性按具体机型验证。"
+          )}
+        </p>
       </Section>
       <ol className="docs-steps">
         <li>
@@ -274,7 +280,7 @@ function Quickstart() {
             <h2>{t("Pair a device")}</h2>
             <p>
               {t(
-                "Open Devices, select the target platform, create a pairing code, and run the generated command."
+                "Open Devices, select the target platform and create a pairing code. Run the generated command on a computer, or install the APK and enter the code in ADC Mobile Node on Android."
               )}
             </p>
           </div>
@@ -1033,6 +1039,7 @@ adc invocation status INVOCATION_ID --json`}
 
 function ToolReference() {
   const { t } = useI18n();
+  const copy = useDocCopy();
   const groups: Array<{ tools: string[]; risk: Message; purpose: Message }> = [
     {
       tools: ["device.list", "device.status"],
@@ -1138,6 +1145,17 @@ function ToolReference() {
           "Devices may also register namespaced MCP Provider tools. Their original input schema is exposed to the Agent, they default to execution risk, and they appear only after explicit authorization."
         )}
       </p>
+      <Section id="task-wait" title={copy("Wait for an existing task", "等待已有任务")}>
+        <p>
+          {copy(
+            "task.wait accepts jobId and waitMs (0–30000 milliseconds, default 4000). It returns when the task finishes or the wait budget expires. A non-terminal response keeps the same jobId: wait again or inspect task.status without resubmitting the original operation.",
+            "task.wait 接收 jobId 和 waitMs（0–30000 毫秒，默认 4000）。任务完成或等待预算耗尽时返回。非终态响应保留同一个 jobId：继续等待或查看 task.status 即可，无需重新提交原操作。"
+          )}
+        </p>
+        <CodeBlock label="CLI">
+          {`adc invoke task.wait --args '{"jobId":"job_example","waitMs":4000}' --json`}
+        </CodeBlock>
+      </Section>
     </>
   );
 }
@@ -1318,8 +1336,8 @@ function ApiReference() {
             <dt>{copy("Device identity", "设备身份")}</dt>
             <dd>
               {copy(
-                "Connector routes use an Ed25519 signature, timestamp and one-time nonce. Device credentials are not accepted by owner or Agent routes.",
-                "Connector 路由使用 Ed25519 签名、时间戳与一次性 nonce。设备凭据不能访问账号用户或 Agent 路由。"
+                "Device routes use an Ed25519 or Android Keystore P-256 signature, timestamp and one-time nonce. Device credentials are not accepted by owner or Agent routes.",
+                "设备路由使用 Ed25519 或 Android Keystore P-256 签名、时间戳与一次性 nonce。设备凭据不能访问账号用户或 Agent 路由。"
               )}
             </dd>
           </div>
@@ -1454,6 +1472,7 @@ function ApiReference() {
 
 function Security() {
   const { t } = useI18n();
+  const copy = useDocCopy();
   const controls: Array<[Message, Message, Message]> = [
     [
       "Stolen access key",
@@ -1462,7 +1481,7 @@ function Security() {
     ],
     [
       "Compromised device key",
-      "Every request uses an Ed25519 signature, timestamp and durable one-time nonce.",
+      "Every device request uses an Ed25519 or Android Keystore P-256 signature, timestamp and one-time nonce.",
       "A stolen private key remains valid until the device is revoked."
     ],
     [
@@ -1503,7 +1522,7 @@ function Security() {
           <ShieldCheck />
           <span>
             {t(
-              "Device requests are signed with a local Ed25519 key, timestamp and one-time nonce."
+              "Every device request uses an Ed25519 or Android Keystore P-256 signature, timestamp and one-time nonce."
             )}
           </span>
         </li>
@@ -1525,8 +1544,9 @@ function Security() {
       </Section>
       <Section id="credentials" title={t("Credential storage")}>
         <p>
-          {t(
-            "Device private keys currently use a mode-0600 file. Keychain and keyring support is not implemented."
+          {copy(
+            "Desktop device keys are stored in local configuration files (mode 0600 on Unix); desktop Keychain and keyring support is not implemented. Android Mobile Node keeps its P-256 private key in Android Keystore.",
+            "桌面设备密钥保存在本地配置文件中（Unix 权限为 0600）；桌面 Keychain 和 keyring 支持尚未实现。Android Mobile Node 的 P-256 私钥保存在 Android Keystore 中。"
           )}
         </p>
       </Section>
@@ -1569,20 +1589,28 @@ function Security() {
       <Section id="assurance" title={t("Current assurance")}>
         <div className="docs-assurance">
           <div>
-            <strong>{t("Verified in automation and preview")}</strong>
+            <strong>{t("Verified in automation and deployment")}</strong>
             <ul>
               <li>{t("Protocol schemas, policy decisions and adapter parity")}</li>
               <li>{t("Real PostgreSQL migrations, locking, restart and account isolation")}</li>
               <li>{t("Path traversal, symlink escape, cancellation and idempotency recovery")}</li>
               <li>{t("macOS arm64 installation, upgrade, reconnect and uninstall")}</li>
               <li>{t("Public HTTPS deployment, database readiness and restart recovery")}</li>
+              <li>
+                {t("Hosted email verification and password recovery with real inbox delivery")}
+              </li>
+              <li>
+                {t(
+                  "Selected Xiaomi/MIUI mobile capabilities; other Android models require validation"
+                )}
+              </li>
             </ul>
           </div>
           <div>
             <strong>{t("Not yet certified")}</strong>
             <ul>
               <li>{t("External penetration testing and signed release provenance")}</li>
-              <li>{t("Production SMTP and real GitHub consent flows")}</li>
+              <li>{t("Real GitHub consent round trip")}</li>
               <li>{t("Linux systemd and every generated cross-platform archive")}</li>
               <li>{t("Hard filesystem, network and process isolation")}</li>
             </ul>
@@ -2016,14 +2044,15 @@ function Roadmap() {
       items: [
         "Personal accounts, email and GitHub sign-in",
         "macOS and glibc Linux connectors for arm64 and x64",
+        "Windows x64 connector and manually installed Android Mobile Node",
         "Scoped Agent grants, approvals, audit and durable receipts",
         "MCP OAuth, CLI connections, SDK and official Skill",
-        "Hosted public preview and the same application for self-hosted deployment"
+        "Official hosted service and the same application for self-hosted deployment"
       ]
     },
     {
       state: "Next",
-      title: "Production hardening",
+      title: "Reliability and operations",
       items: [
         "Signed release packages and unattended updates",
         "Keychain and keyring-backed device identity",
@@ -2039,7 +2068,7 @@ function Roadmap() {
         "Linux container isolation for higher-risk execution",
         "Team roles, shared device pools and approval workflows",
         "Enterprise SSO, SCIM and SIEM export",
-        "Windows connector and additional local executors",
+        "Additional local executors and device integrations",
         "Tool plugin and community Skill ecosystem"
       ]
     }
@@ -2265,12 +2294,37 @@ function Changelog() {
     <>
       <PageIntro
         eyebrow={t("Changelog")}
-        title={copy("0.1 pre-release history", "0.1 预发布版本记录")}
+        title={copy("Release history", "版本记录")}
         description={copy(
-          "Behavior changes, verification status and operator actions for the public preview and self-hosted source release.",
-          "记录公开预览与自托管源码版本的行为变化、验证状态和运维操作。"
+          "Behavior changes and upgrade guidance for the official hosted service and self-hosted releases.",
+          "记录官方托管服务与自部署版本的行为变化和升级说明。"
         )}
       />
+      <Section
+        id="2026-10-16-hosted"
+        title={copy(
+          "2026-10-16 · Official service at adc.zioon.tech",
+          "2026-10-16 · 正式服务 adc.zioon.tech"
+        )}
+      >
+        <p>
+          {copy(
+            "The official service uses https://adc.zioon.tech. The root and www domains redirect there while preserving paths and query parameters. Documentation and downloads now use the official service address, and the public footer displays the approved ICP filing.",
+            "正式服务使用 https://adc.zioon.tech。主域名与 www 域名保留路径和查询参数跳转到此处；文档与下载入口统一使用正式地址，网站页脚展示已通过的 ICP 备案号。"
+          )}
+        </p>
+      </Section>
+      <Section
+        id="2026-10-13-release"
+        title={copy("2026-10-13 · Connector 0.1.3", "2026-10-13 · Connector 0.1.3")}
+      >
+        <p>
+          {copy(
+            "Bounded task waiting lets CLI, MCP and SDK callers follow an existing task without repeated submission. Use task.wait with the returned jobId; a wait timeout leaves the task running and returns its current state.",
+            "有界任务等待使 CLI、MCP 和 SDK 调用方能跟踪已有任务，无需重复提交。使用返回的 jobId 调用 task.wait；等待超时后任务仍继续运行，并返回当前状态。"
+          )}
+        </p>
+      </Section>
       <Section
         id="2026-10-11-release"
         title={copy("2026-10-11 · Connector 0.1.1", "2026-10-11 · Connector 0.1.1")}
@@ -2358,15 +2412,15 @@ function Changelog() {
         </p>
         <p>
           {copy(
-            "The pre-release supports macOS and glibc Linux on arm64 and x64. Production claims remain bounded by the verification published in Security and the implementation status.",
-            "预发布版本支持 arm64 与 x64 的 macOS 和 glibc Linux。生产能力声明以「安全」页面和实现状态中公开的验证范围为准。"
+            "The initial release targeted macOS and glibc Linux on arm64 and x64. Windows x64 and Android Mobile Node were added later; current platform verification is documented in Security and the implementation status.",
+            "最初版本面向 arm64 与 x64 的 macOS 和 glibc Linux，后续加入 Windows x64 与 Android Mobile Node。当前平台验证范围见「安全」页面和实现状态。"
           )}
         </p>
       </Section>
       <Section id="known-limits" title={t("Known limits")}>
         <p>
           {t(
-            "Windows, hard process isolation, signed packages, automatic updates, quotas and external artifact storage are not available yet."
+            "Hard process isolation, signed desktop packages, unattended updates, quotas and external artifact storage are not available yet. Desktop updates use adc update; the hosted Android APK uses development signing and manual installation."
           )}
         </p>
       </Section>
@@ -2496,6 +2550,7 @@ export function Documentation({ signedIn }: { signedIn: boolean }) {
           )}
         </main>
       </div>
+      <PublicFooter />
     </div>
   );
 }

@@ -187,7 +187,9 @@ and re-pair devices when recovering from a security incident.
 
 Use `docker compose --env-file .env -f deploy/compose.yaml build` followed by
 `docker compose --env-file .env -f deploy/compose.yaml up -d`. Include the local override for a
-loopback installation. No published OCI image, automatic updater or downgrade migration is supplied.
+loopback installation. No published OCI image, unattended updater or downgrade migration is supplied.
+Desktop Connectors support explicit `adc update --check` / `adc update` with integrity verification
+and activation rollback.
 
 ## Migrating the early shared-token prototype
 
@@ -202,7 +204,8 @@ bootstrap endpoint that grants control of old data.
 Text artifacts currently use PostgreSQL blobs. PNG screen captures use `ADC_ASSET_DIR`, with only
 their metadata retained in PostgreSQL. Each artifact is capped at 25 MiB; account storage quotas,
 retention jobs and an S3 adapter are not implemented. Monitor both database and asset-directory disk
-usage. This release has one active execution per foreground daemon, no OS-enforced
-CPU/memory/network sandbox, and no multi-region service orchestration. The implementation tests run
+usage. Desktop daemons default to six concurrent tasks and apply the device's configured concurrency
+limit. There is no OS-enforced CPU/memory/network sandbox or multi-region service orchestration.
+The implementation tests run
 against real PostgreSQL; container image startup, TLS issuance and SMTP deliverability must also be
 verified in the target deployment.

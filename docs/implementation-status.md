@@ -36,6 +36,8 @@
   approvals and audit; `adc connect` provisions the current CLI without exposing its secret
 - Agent-scoped invocation lookup preserves continuity from pending approval to queued task without
   resubmitting the operation
+- Bounded `task.wait` across CLI/MCP/SDK with an existing job ID, terminal-state wakeup and
+  a non-terminal response when the wait budget expires
 - Local command-template add/list/remove commands with automatic Connector reload
 - Device-side MCP Provider registry for stdio and Streamable HTTP, automatic `tools/list`
   discovery, stable schema-versioned Tool IDs, local `tools/call` forwarding and hot reload
@@ -59,7 +61,7 @@
 - Public documentation center with 16 task-oriented sections covering setup, architecture,
   Connector operation, integration, tools, API errors, security, self-hosting, production
   operations, troubleshooting, contribution, roadmap and release history
-- Route-level prerendering for 28 public pages with canonical metadata, Open Graph, JSON-LD,
+- Route-level prerendering for public pages with canonical metadata, Open Graph, JSON-LD,
   sitemap, robots policy, RSS and `llms.txt` discovery resources
 - Typed bilingual product updates, engineering articles, hands-on guides, use cases, related
   reading, category filters, privacy and telemetry pages
@@ -86,10 +88,13 @@
 - User launchd/systemd/Task Scheduler startup and start/stop/restart/status/logs/uninstall commands
 - Exact-ID-confirmed local unpair for replacing deleted devices while retaining durable receipts
 - Console installation command, separate CDN/release origin and automatic device presence refresh
+- Official hosted domain `https://adc.zioon.tech`, root/www redirects preserving request paths,
+  approved ICP filing in the footer and a manually installed Android APK in device pairing
 
 ## Verified
 
-- 176 passing unit tests across 29 files; one opt-in macOS service test remains environment-gated
+- Unit suites cover protocol, authorization, device execution, task waiting and bilingual public
+  rendering; the opt-in macOS service test remains environment-gated
 - Real PostgreSQL migration, concurrent `SKIP LOCKED` claims and restart persistence
 - Pairing/replay/revoke behavior
 - Symlink escape, secret redaction, command denial, timeout/cancel and output limits
@@ -116,7 +121,7 @@
 - Concurrent create-only publication, hidden template roots, symlink aliases to protected files
 - Expired invocation terminal results, completed-receipt replay after expiry, shutdown and lease loss
 - Console production build
-- Both-language React rendering, 708 catalog/placeholder checks, public/docs/console links, auth
+- Both-language React rendering, catalog/placeholder checks, public/docs/console links, auth
   pages, pre-filled management forms, unavailable scopes and deletion dialogs
 - Production entry HTTP smoke: built assets/CSP, login routes, anonymous API denial and OAuth discovery
 - Production dependency audit against npmjs: no known vulnerabilities after updating Nodemailer/Vitest
@@ -127,7 +132,7 @@
 
 ## Deployment verification
 
-The hosted preview at `https://adc.47-101-150-8.nip.io:8443` runs the same application under systemd
+The official hosted service at `https://adc.zioon.tech` runs the same application under systemd
 with an isolated PostgreSQL database and Caddy TLS routing. Public health, static assets, OAuth
 metadata, account registration, authenticated session persistence across an application restart,
 email verification, password recovery and all five downloadable Connector archives have been
@@ -136,8 +141,14 @@ auto-sign-in, password reset, old-session revocation and login with the new pass
 
 Compose configuration and Dockerfile are provided, but container image startup is not yet included
 in the deployment verification above. GitHub tests simulate provider HTTP endpoints and use real
-authentication/PostgreSQL; the hosted preview also has a configured OAuth App, but a real GitHub
+authentication/PostgreSQL; the official service also has a configured OAuth App, but a real GitHub
 consent round trip still requires an interactive provider session.
+
+The hosted Android APK is downloadable from device pairing. It uses a development signing key and
+manual installation/updates; the verified signed release-channel implementation is available for
+separate publication. Physical Xiaomi/MIUI testing is limited to the recorded device and scenarios,
+not general Android certification. Screen capture, Accessibility UI control and wake dispatch are
+implemented; permission, lock-screen and background recovery behavior must be qualified per model.
 
 The current sandbox rejects `launchctl` execution with EACCES, so the actual macOS service-manager
 test is opt-in (`ADC_TEST_LAUNCHD=1`) and was not passed here. macOS x64, Linux arm64/x64 and
@@ -150,9 +161,8 @@ compression and PostgreSQL startup from starving short-lease tests.
 ## Not implemented
 
 - CIMD and named third-party MCP client interoperability certification
-- Physical Android verification of screen capture, UI inspection/control, gestures and system
-  navigation; push wake, background location mode, camera/media capabilities and signed release
-  distribution
+- Android background location mode and camera/media capabilities
+- Production-signed Android APK publication on the official hosted update channel
 - Keychain/keyring-backed Node key storage
 - Linux container hard-isolation profile
 - S3-compatible artifact adapter, account storage/compute quotas and retention jobs

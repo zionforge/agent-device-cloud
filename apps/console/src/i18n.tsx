@@ -84,8 +84,6 @@ export const zh = {
   Architecture: "架构",
   Roadmap: "路线图",
   "Private device infrastructure for AI agents": "面向 AI Agent 的私有设备基础设施",
-  "Public preview · Private device infrastructure for AI agents":
-    "公网预览 · 面向 AI Agent 的私有设备基础设施",
   "Give any AI agent controlled access to the files, tools and environments already on your devices.":
     "让任何 AI Agent 在你的控制下，使用设备上已有的文件、工具和环境。",
   "Agents keep using MCP, CLI or SDK. ADC authorizes and routes each call; the selected Mac or Linux device runs the tool.":
@@ -237,22 +235,22 @@ export const zh = {
   "A complete personal device loop": "完整的个人设备闭环",
   "Accounts, macOS/Linux connectors, local MCP Providers, scoped grants, approvals, audit, MCP OAuth, CLI, Skill and self-hosting.":
     "账户、macOS/Linux 连接器、本地 MCP Provider、范围授权、审批、审计、MCP OAuth、CLI、Skill 与自部署。",
-  "Accounts, macOS/Linux/Windows connectors, local MCP Providers, scoped grants, approvals, audit, MCP OAuth, CLI, Skill and self-hosting.":
-    "账户、macOS/Linux/Windows 连接器、本地 MCP Provider、范围授权、审批、审计、MCP OAuth、CLI、Skill 与自部署。",
-  "Production hardening": "生产级加固",
+  "Accounts, macOS/Linux/Windows connectors, Android Mobile Node, local MCP Providers, scoped grants, approvals, audit, MCP OAuth, CLI, Skill and self-hosting.":
+    "账户、macOS/Linux/Windows 连接器、Android Mobile Node、本地 MCP Provider、范围授权、审批、审计、MCP OAuth、CLI、Skill 与自部署。",
+  "Reliability and operations": "可靠性与运维",
   "Signed releases, automatic updates, keychain storage, quotas, retention and external artifact storage.":
     "签名发布、自动升级、安全密钥存储、配额、保留策略和外部产物存储。",
   Later: "长期",
   "Teams and broader capabilities": "团队与更广泛的设备能力",
-  "Container isolation, team roles, SSO, SIEM export, Windows and additional local executors.":
-    "容器隔离、团队角色、SSO、SIEM 导出、Windows 与更多本地执行器。",
+  "Container isolation, team roles, SSO, SIEM export and additional local executors.":
+    "容器隔离、团队角色、SSO、SIEM 导出与更多本地执行器。",
   "See the roadmap": "查看路线图",
   "Hosted or self-hosted": "托管或自部署",
   "One product, the same trust model.": "同一个产品，同一套信任模型。",
   "Self-hosting is not a reduced edition. It uses the same accounts, authorization, approvals, audit and device software.":
     "自部署不是功能缩水版，它使用相同的账户、授权、审批、审计和设备软件。",
-  "Use the hosted preview now, or deploy the same application on your own infrastructure. Both use the same accounts, authorization, approvals, audit and device software.":
-    "现在即可使用托管预览，也可以在自己的基础设施上部署同一应用；两者使用相同的账户、授权、审批、审计和设备软件。",
+  "Use the official hosted service, or deploy the same application on your own infrastructure. Both use the same accounts, authorization, approvals, audit and device software.":
+    "使用官方托管服务，也可以在自己的基础设施上部署同一应用；两者使用相同的账户、授权、审批、审计和设备软件。",
   "Deploy it yourself": "自行部署",
   "Self-hosting guide": "自部署指南",
   "Questions that should have clear answers.": "重要问题，应该有明确答案。",
@@ -331,8 +329,10 @@ export const zh = {
     "MCP OAuth、Agent Token、CLI、SDK 与官方 Skill",
   "MCP OAuth, CLI connections, SDK and official Skill": "MCP OAuth、CLI 连接、SDK 与官方 Skill",
   "The same application for hosted and self-hosted deployment": "托管与自部署使用同一个完整应用",
-  "Hosted public preview and the same application for self-hosted deployment":
-    "托管公网预览与自部署使用同一个完整应用",
+  "Official hosted service and the same application for self-hosted deployment":
+    "官方托管服务与自部署使用同一个完整应用",
+  "Windows x64 connector and manually installed Android Mobile Node":
+    "Windows x64 连接器与手动安装的 Android Mobile Node",
   "Signed release packages and unattended updates": "签名发布包与无人值守升级",
   "Keychain and keyring-backed device identity": "由 Keychain 或 keyring 保护的设备身份",
   "External artifact storage, quotas and retention": "外部产物存储、配额与保留策略",
@@ -341,7 +341,7 @@ export const zh = {
   "Linux container isolation for higher-risk execution": "面向高风险执行的 Linux 容器隔离",
   "Team roles, shared device pools and approval workflows": "团队角色、共享设备池与审批工作流",
   "Enterprise SSO, SCIM and SIEM export": "企业 SSO、SCIM 与 SIEM 导出",
-  "Windows connector and additional local executors": "Windows 连接器与更多本地执行器",
+  "Additional local executors and device integrations": "更多本地执行器与设备集成",
   "Tool plugin and community Skill ecosystem": "工具插件与社区 Skill 生态",
   "What will not change": "长期不变的原则",
   "Device-side policy remains the final authority.": "设备侧策略始终拥有最终决定权。",
@@ -369,8 +369,8 @@ export const zh = {
   "A copied access key remains usable until it expires or is revoked.":
     "被复制的访问密钥在到期或撤销前仍然可用。",
   "Compromised device key": "设备密钥泄露",
-  "Every request uses an Ed25519 signature, timestamp and durable one-time nonce.":
-    "每个请求都使用 Ed25519 签名、时间戳和持久化一次性随机数。",
+  "Every device request uses an Ed25519 or Android Keystore P-256 signature, timestamp and one-time nonce.":
+    "每个设备请求都使用 Ed25519 或 Android Keystore P-256 签名、时间戳和一次性随机数。",
   "A stolen private key remains valid until the device is revoked.":
     "被盗私钥在设备撤销前仍然有效。",
   "Path escape": "路径逃逸",
@@ -390,7 +390,7 @@ export const zh = {
     "脱敏属于尽力防护，无法保证任意已授权内容都不包含敏感信息。",
   "Current assurance": "当前验证范围",
   "Verified in automation": "已通过自动化验证",
-  "Verified in automation and preview": "已通过自动化与公网预览验证",
+  "Verified in automation and deployment": "已通过自动化与部署验证",
   "Protocol schemas, policy decisions and adapter parity": "协议 Schema、策略决策与适配器一致性",
   "Real PostgreSQL migrations, locking, restart and account isolation":
     "真实 PostgreSQL 迁移、锁、重启与账户隔离",
@@ -402,9 +402,11 @@ export const zh = {
     "公网 HTTPS 部署、数据库就绪检查与重启恢复",
   "Not yet certified": "尚未完成认证",
   "External penetration testing and signed release provenance": "外部渗透测试与签名发布溯源",
-  "Production SMTP, real GitHub consent and public TLS deployment":
-    "生产 SMTP、真实 GitHub 授权与公网 TLS 部署",
-  "Production SMTP and real GitHub consent flows": "生产 SMTP 与真实 GitHub 授权流程",
+  "Hosted email verification and password recovery with real inbox delivery":
+    "托管服务邮箱验证、密码找回与真实收件箱投递",
+  "Real GitHub consent round trip": "真实 GitHub 授权完整链路",
+  "Selected Xiaomi/MIUI mobile capabilities; other Android models require validation":
+    "部分 Xiaomi/MIUI 移动端能力；其他 Android 机型需单独验证",
   "Linux systemd and every generated cross-platform archive":
     "Linux systemd 与全部跨平台安装包实机验证",
   "Hard filesystem, network and process isolation": "文件系统、网络与进程级硬隔离",
@@ -443,10 +445,8 @@ export const zh = {
   "Before you begin": "开始之前",
   "Source development requires Node.js 22 or newer. Installed connectors include their own Node.js runtime.":
     "源码开发需要 Node.js 22 或更高版本；安装版连接器已自带 Node.js 运行时。",
-  "The hosted preview requires an account and a supported macOS or glibc Linux device. Installed connectors include their own Node.js runtime; Node.js 22 is only required for source development.":
-    "使用托管预览只需要一个账户和受支持的 macOS 或 glibc Linux 设备。安装版连接器已自带 Node.js 运行时；只有源码开发需要 Node.js 22。",
-  "The hosted preview requires an account and a supported macOS, glibc Linux or Windows device. Installed connectors include their own Node.js runtime; Node.js 22 is only required for source development.":
-    "使用托管预览需要一个账户，以及受支持的 macOS、glibc Linux 或 Windows 设备。安装版连接器已自带 Node.js 运行时；只有源码开发需要 Node.js 22。",
+  "Create an account and connect a macOS, glibc Linux or Windows device, or install ADC Mobile Node on Android. Desktop connectors include their own Node.js runtime; Node.js 22 is only required for source development.":
+    "创建账户后，可连接 macOS、glibc Linux 或 Windows 设备，也可在 Android 上安装 ADC Mobile Node。桌面连接器已自带 Node.js 运行时；只有源码开发需要 Node.js 22。",
   "Create an account": "创建账户",
   "Open the console and sign in with email or GitHub.": "打开控制台，通过邮箱或 GitHub 登录。",
   "Open the console and use one of the sign-in methods enabled by this deployment.":
@@ -455,6 +455,8 @@ export const zh = {
     "打开「设备」，生成配对码，然后在 macOS 或 glibc Linux 上运行生成的命令。",
   "Open Devices, select the target platform, create a pairing code, and run the generated command.":
     "打开「设备」，选择目标平台、生成配对码，然后运行生成的命令。",
+  "Open Devices, select the target platform and create a pairing code. Run the generated command on a computer, or install the APK and enter the code in ADC Mobile Node on Android.":
+    "打开「设备」，选择目标平台并生成配对码。在电脑上运行生成的命令；Android 则安装 APK，并在 ADC Mobile Node 中输入配对码。",
   "Choose devices, folders, tools and an approval policy. Projects are optional.":
     "选择设备、目录、工具和审批策略；项目不是必选项。",
   "Connect a client": "连接客户端",
@@ -549,16 +551,12 @@ export const zh = {
   "Trust model": "信任模型",
   "Management sessions administer an account. Agent credentials can only use their bound authorization.":
     "管理会话用于管理账户；Agent 凭据只能使用它绑定的授权。",
-  "Device requests are signed with a local Ed25519 key, timestamp and one-time nonce.":
-    "设备请求使用本地 Ed25519 密钥、时间戳和一次性随机数签名。",
   "Filesystem operations validate canonical paths and symlink boundaries again on the device.":
     "文件系统操作会在设备端再次校验规范路径和符号链接边界。",
   "Important limitation": "重要限制",
   "Restricted process mode is a guardrail, not a sandbox. Full device trust disables command and protected-path filters.":
     "受限进程模式只是防护栏，并非沙箱。完全信任模式会关闭命令和受保护路径过滤。",
   "Credential storage": "凭据存储",
-  "Device private keys currently use a mode-0600 file. Keychain and keyring support is not implemented.":
-    "设备私钥目前保存在权限为 0600 的文件中，尚未接入 Keychain 或 keyring。",
   "Deploy with Docker Compose": "使用 Docker Compose 部署",
   "Production requires HTTPS, PostgreSQL, a stable auth secret and working SMTP when email verification is enabled.":
     "生产环境需要 HTTPS、PostgreSQL、稳定的认证密钥；启用邮箱验证时还需要可用的 SMTP。",
@@ -587,14 +585,13 @@ export const zh = {
     "检查 Agent 工具列表、设备策略、目录写权限和本地访问模式。",
   "Update available": "有可用更新",
   "Latest version: {version}": "最新版本：{version}",
-  "Version 0.1.1": "版本 0.1.1",
+  "Version 0.1.3": "版本 0.1.3",
   "Version 0.1.0": "版本 0.1.0",
-  "Initial pre-release": "首个预发布版本",
   "Account isolation, device pairing, direct grants, approvals, receipts, MCP OAuth, CLI, Skill and installable connectors.":
     "提供账户隔离、设备配对、直接授权、审批、回执、MCP OAuth、CLI、Skill 和可安装连接器。",
   "Known limits": "已知限制",
-  "Windows, hard process isolation, signed packages, automatic updates, quotas and external artifact storage are not available yet.":
-    "暂不支持 Windows、进程硬隔离、签名安装包、自动更新、配额和外部产物存储。",
+  "Hard process isolation, signed desktop packages, unattended updates, quotas and external artifact storage are not available yet. Desktop updates use adc update; the hosted Android APK uses development signing and manual installation.":
+    "暂未提供进程硬隔离、桌面签名安装包、无人值守升级、配额和外部产物存储。桌面端通过 adc update 更新；托管站点的 Android APK 使用开发签名并需手动安装。",
   "Release notes describe behavior changes and required operator actions before upgrading.":
     "升级前请阅读发布说明，确认行为变化和必要的运维操作。",
   "How it works": "如何使用",
@@ -751,14 +748,14 @@ export const zh = {
     "在 Windows PowerShell 中运行此命令，无需预装 curl、shell 或 Node.js。",
   "Run this command inside WSL to connect the Linux environment, not the Windows host.":
     "在 WSL 内运行此命令；连接的是 Linux 环境，而不是 Windows 主机。",
-  "Download the preview APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node.":
-    "下载预览 APK，按 Android 提示允许此浏览器安装应用，然后在 ADC Mobile Node 中输入这些信息。",
+  "Download the Android APK, allow installation from this browser when Android asks, then enter these values in ADC Mobile Node.":
+    "下载 Android APK，按 Android 提示允许此浏览器安装应用，然后在 ADC Mobile Node 中输入这些信息。",
   "Installs the connector and starts it in the background. Your device will appear below automatically.":
     "安装连接器并在后台启动，设备会自动出现在下方。",
-  "Preview builds use a development signing key and do not participate in automatic updates.":
-    "预览构建使用开发签名，不会进入自动更新通道。",
-  "Download preview APK": "下载预览 APK",
-  "Android preview is not available on this installation.": "此站点暂未提供 Android 预览 APK。",
+  "This APK uses a development signing key and requires manual installation and updates.":
+    "此 APK 使用开发签名，安装与更新均需手动完成。",
+  "Download Android APK": "下载 Android APK",
+  "Android APK is not available on this installation.": "此站点暂未提供 Android APK。",
   "Device downloads are not available yet. Contact the installation administrator.":
     "设备安装包暂不可用，请联系站点管理员。",
   "Could not copy. Select and copy the command above.": "复制失败，请手动选择并复制上方命令。",

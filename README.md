@@ -34,17 +34,20 @@ are documented in [apps/android-node](apps/android-node/README.md). The
 user-confirmed and special-access flows, and managed-device-only operations. Signed APK publication
 and the App's verified update channel are documented in
 [Android Mobile Node distribution](docs/android-node-distribution.md). The Mobile Node has physical
-Xiaomi/MIUI validation but is not included in the hosted Connector downloads.
+Xiaomi/MIUI validation and is available as a manually installed APK from **Devices → Pair device →
+Android**. The current hosted APK uses a development signing key and does not receive automatic
+updates; signed release-channel publication is a separate deployment step.
 
-## Hosted preview
+## Official hosted service
 
-The current public preview is available at
-**https://adc.47-101-150-8.nip.io:8443**. It serves the Console, MCP endpoint and verified macOS/Linux
-Connector packages from the same deployment.
+Use **https://adc.zioon.tech** to create an account, connect devices and authorize agents.
+The official service serves the Console, MCP endpoint, macOS/Linux/Windows Connector packages and
+the Android APK from the same deployment. `zioon.tech` and `www.zioon.tech` redirect to this address.
 
-This is an evaluation environment, not a production service. Email/password registration is enabled
-without email verification; SMTP password recovery and GitHub login are disabled until their
-deployment credentials are configured. Do not store irreplaceable data in the preview.
+Email/password registration, email verification, password recovery and GitHub login are configured.
+Hosted and self-hosted installations share the same authorization and local execution boundaries.
+See [security](https://adc.zioon.tech/docs/security) and [implementation status](docs/implementation-status.md) for
+current safeguards, verified platforms and remaining limitations.
 
 ## Start a public installation
 
@@ -92,13 +95,15 @@ unavailable. Do not use this HTTP override as a public deployment.
 2. Copy the installation command and run it on your device. Its general form is:
 
    ```bash
-   curl -fsSL https://devices.example.com/install.sh | sh -s -- \
+   curl -fsSL https://devices.example.com/downloads/node/install.sh | sh -s -- \
      --url https://devices.example.com --code 'PAIRING_CODE'
    ```
 
    On Windows 10/11 x64, select **Windows PowerShell** in the console. The generated command
    downloads `install.ps1` with `Invoke-WebRequest`; curl, a Unix shell and Node.js are not required.
    WSL remains a separate Linux node and uses the macOS/Linux command.
+   For Android, download the APK from the pairing dialog and enter the displayed service URL and
+   pairing code in ADC Mobile Node. Enable only the local capabilities you intend to share.
 
    The installer includes Node.js and both `adc` and `adc-node`; no source checkout, npm or pnpm is
    needed. It asks for a device name and offers local access choices: choose folders, home, full

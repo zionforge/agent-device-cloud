@@ -37,6 +37,79 @@ export function localize(value: LocalizedText, locale: Locale): string {
 
 export const publicContent: PublicContentEntry[] = [
   {
+    path: "/updates/connector-0-1-3",
+    kind: "Product update",
+    title: text(
+      "Connector 0.1.3: bounded task waits and the official service",
+      "Connector 0.1.3：有界任务等待与正式服务"
+    ),
+    summary: text(
+      "Follow existing tasks with task.wait, connect through adc.zioon.tech and choose desktop or Android installation from the console.",
+      "通过 task.wait 跟踪已有任务，使用 adc.zioon.tech 正式服务，并在控制台选择桌面端或 Android 安装方式。"
+    ),
+    publishedAt: "2026-10-16",
+    updatedAt: "2026-10-16",
+    readingMinutes: 3,
+    keywords: [
+      "Agent Device Cloud 0.1.3",
+      "ADC task.wait",
+      "Android Mobile Node",
+      "adc.zioon.tech"
+    ],
+    listed: true,
+    relatedPaths: [
+      "/guides/first-device-to-first-tool-call",
+      "/updates/connector-0-1-1",
+      "/updates/websocket-task-wakeups"
+    ],
+    sections: [
+      {
+        id: "task-wait",
+        title: text("Wait for the task you already submitted", "等待已经提交的任务"),
+        paragraphs: [
+          text(
+            "Connector 0.1.3, released on October 13, adds bounded waiting across CLI, MCP and SDK calls. task.wait accepts the existing jobId and a waitMs budget from 0 to 30000 milliseconds, defaulting to 4000. It returns the terminal result when available, or the current task state when the budget expires.",
+            "10 月 13 日发布的 Connector 0.1.3 为 CLI、MCP 和 SDK 调用加入有界等待。task.wait 接收已有 jobId 与 0 到 30000 毫秒的 waitMs 预算，默认 4000。完成时返回终态结果，等待预算耗尽时返回任务当前状态。"
+          ),
+          text(
+            "An unfinished task keeps the same jobId. Continue waiting or inspect its status; do not submit the original operation again just because one wait ended.",
+            "尚未完成的任务保留同一个 jobId。继续等待或检查状态即可，不要因为一次等待结束就重新提交原操作。"
+          )
+        ],
+        code: `adc invoke task.wait --args '{"jobId":"job_example","waitMs":4000}' --json`
+      },
+      {
+        id: "official-service",
+        title: text("Connect through the official domain", "通过正式域名连接"),
+        paragraphs: [
+          text(
+            "The official hosted service is available at https://adc.zioon.tech with email registration, verification, password recovery and configured GitHub sign-in. zioon.tech and www.zioon.tech redirect to the service while preserving paths and query parameters.",
+            "官方托管服务现使用 https://adc.zioon.tech，已配置邮箱注册、验证、密码找回与 GitHub 登录。zioon.tech 与 www.zioon.tech 保留路径和查询参数跳转到正式服务。"
+          ),
+          text(
+            "The website, discovery metadata and download manifests use the official address. Hosted and self-hosted installations continue to share the same authorization, approvals, audit and local execution model.",
+            "网站、发现元数据与下载清单统一使用正式地址。托管与自部署实例继续共享相同的授权、审批、审计和本地执行模型。"
+          )
+        ],
+        code: "adc login --url https://adc.zioon.tech"
+      },
+      {
+        id: "device-downloads",
+        title: text("Choose the installation for your device", "选择适合设备的安装方式"),
+        paragraphs: [
+          text(
+            "Devices → Pair device offers macOS, glibc Linux, Windows x64 and Android. Desktop installers include their own runtime and support explicit upgrades with adc update. Android pairing uses an APK and the service URL and code shown in the console.",
+            "「设备 → 配对设备」提供 macOS、glibc Linux、Windows x64 和 Android。桌面安装器自带运行时，并支持通过 adc update 主动升级。Android 通过 APK 安装，使用控制台显示的服务地址与配对码。"
+          ),
+          text(
+            "The current hosted Android APK uses development signing and requires manual installation and updates. Phone capabilities depend on local permissions. Xiaomi/MIUI testing does not certify every Android model; desktop and mobile verification boundaries remain documented in Security.",
+            "当前托管 Android APK 使用开发签名，安装和更新均需手动完成。手机能力取决于本地权限。Xiaomi/MIUI 测试不代表所有 Android 机型均已认证；桌面端与移动端的验证范围仍在「安全」页面中明确说明。"
+          )
+        ]
+      }
+    ]
+  },
+  {
     path: "/updates/connector-0-1-1",
     kind: "Product update",
     title: text(
@@ -189,7 +262,7 @@ export const publicContent: PublicContentEntry[] = [
       "配对 Connector、创建最小 Agent 授权，并验证完整执行链路。"
     ),
     publishedAt: "2026-09-29",
-    updatedAt: "2026-09-29",
+    updatedAt: "2026-10-16",
     readingMinutes: 7,
     keywords: [
       "Agent Device Cloud tutorial",
@@ -234,7 +307,7 @@ export const publicContent: PublicContentEntry[] = [
             "登录控制台，在「设备」中选择目标平台并运行生成的命令。配对码短时有效且只能使用一次。配对会创建本地 Ed25519 身份，并配置 launchd、systemd --user 或 Windows 任务计划程序。"
           )
         ],
-        code: `curl -fsSL https://devices.example.com/install.sh | sh -s -- \\
+        code: `curl -fsSL https://devices.example.com/downloads/node/install.sh | sh -s -- \\
   --url https://devices.example.com --code 'PAIRING_CODE'
 
 adc-node status
