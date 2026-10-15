@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyticsEventForRequest, analyticsPath, trackAnalytics } from "./analytics.tsx";
 import { listedPublicContent, publicContent, relatedPublicContent } from "./public-content.ts";
+import { icpFiling } from "./public-header.tsx";
 import { publicRouteMetadata, publicRoutes } from "./site-metadata.ts";
 
 describe("public site metadata", () => {
@@ -40,5 +41,12 @@ describe("public site metadata", () => {
     expect(analyticsEventForRequest("/api/v1/grants/grant_example", "PATCH")).toBeUndefined();
     expect(analyticsEventForRequest("/api/v1/invocations", "POST")).toBeUndefined();
     expect(() => trackAnalytics("primary_cta_selected", { placement: "test" })).not.toThrow();
+  });
+
+  it("publishes the approved ICP filing in the public footer", () => {
+    expect(icpFiling).toEqual({
+      number: "赣ICP备2026025481号",
+      url: "https://beian.miit.gov.cn/"
+    });
   });
 });
