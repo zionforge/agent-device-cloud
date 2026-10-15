@@ -231,10 +231,14 @@ export async function buildPlugins(output = resolve(root, "dist/plugins")) {
       });
     }
     if (host === "cline") {
+      const setupGuidance = await readFile(
+        resolve(root, "skills/agent-device-cloud/references/getting-started.md"),
+        "utf8"
+      );
       files["index.mjs"] = await bundle(
         "plugins/cline/index.ts",
         "node",
-        "import {createTool} from '@cline/sdk';import {createClinePlugin} from './plugins/cline/index.ts';export const createAgentDeviceCloudPlugin=(options={})=>createClinePlugin(createTool,options);export default createAgentDeviceCloudPlugin();"
+        `import {createTool} from '@cline/sdk';import {createClinePlugin} from './plugins/cline/index.ts';export const createAgentDeviceCloudPlugin=(options={})=>createClinePlugin(createTool,{setupGuidance:${JSON.stringify(setupGuidance)},...options});export default createAgentDeviceCloudPlugin();`
       );
       add("package.json", {
         name: "adc-cline-plugin",

@@ -7,7 +7,7 @@ import type { Tool } from "@modelcontextprotocol/sdk/types.js";
 import type { JsonSchemaType } from "@modelcontextprotocol/sdk/validation/types.js";
 
 export const ADC_ORIGIN = "https://adc.zioon.tech";
-export const PLUGIN_VERSION = "0.1.0";
+export const PLUGIN_VERSION = "0.1.1";
 export const WORKFLOW_GUIDANCE =
   "Discover ADC devices and live tool schemas before use. Select the intended device and its platform. " +
   "Use adc_read for read-only tools and adc_invoke for side effects with a stable idempotencyKey. " +

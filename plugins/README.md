@@ -1,5 +1,5 @@
 ADC plugins provide connection guidance, live device/tool discovery, device work, existing-task
-tracking, receipts and independent human approval. Plugin version: **0.1.0**.
+tracking, receipts and independent human approval. Plugin version: **0.1.1**.
 
 Download from [ADC integrations](https://adc.zioon.tech/docs/integrations#plugins).
 The ZIPs contain the complete package, including Skills and bundled runtime dependencies.
@@ -33,6 +33,9 @@ Cline single-file install:
 ```sh
 cline plugin install https://adc.zioon.tech/downloads/plugins/agent-device-cloud-cline.mjs
 ```
+
+Run `/adc setup` after single-file installation. The module embeds the complete getting-started
+guide, so setup does not depend on a separate Skill folder.
 
 For a Cline SDK application, import `createAgentDeviceCloudPlugin` from the bundled `index.mjs`.
 Pass `allowSideEffects: true` only when your application explicitly enables device execution.

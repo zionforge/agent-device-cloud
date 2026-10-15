@@ -54,8 +54,8 @@ export function HarnessPlugins({ origin }: { origin: string }) {
       <h2>{copy("Harness plugins", "Harness 插件")}</h2>
       <p>
         {copy(
-          "Install ADC in your Agent with setup guidance, device discovery, tasks and approval links. Version 0.1.0 packages connect to the official ADC service.",
-          "在 Agent 中安装 ADC，获得接入引导、设备发现、任务与审批入口。0.1.0 版本插件包连接 ADC 官方服务。"
+          "Install ADC in your Agent with setup guidance, device discovery, tasks and approval links. Version 0.1.1 packages connect to the official ADC service.",
+          "在 Agent 中安装 ADC，获得接入引导、设备发现、任务与审批入口。0.1.1 版本插件包连接 ADC 官方服务。"
         )}
       </p>
       <nav className="docs-inline-links" aria-label={copy("Plugin downloads", "插件下载")}>
@@ -118,8 +118,8 @@ export function HarnessPlugins({ origin }: { origin: string }) {
       {host === "cline" ? (
         <p>
           {copy(
-            "Native plugins apply to Cline SDK/CLI/Kanban. Each session starts read-only; /adc mode execute enables device operations within your ADC access. Editor extensions use Skill plus MCP.",
-            "原生插件适用于 Cline SDK/CLI/Kanban。每个会话初始为只读；/adc mode execute 可在 ADC 授权范围内启用设备操作。编辑器扩展使用 Skill 加 MCP。"
+            "Native plugins apply to Cline SDK/CLI/Kanban. Run /adc setup for the embedded getting-started guide after single-file installation. Each session starts read-only; /adc mode execute enables device operations within your ADC access. Editor extensions use Skill plus MCP.",
+            "原生插件适用于 Cline SDK/CLI/Kanban。单文件安装后运行 /adc setup，即可使用内嵌接入指南。每个会话初始为只读；/adc mode execute 可在 ADC 授权范围内启用设备操作。编辑器扩展使用 Skill 加 MCP。"
           )}
         </p>
       ) : null}

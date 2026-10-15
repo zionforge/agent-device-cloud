@@ -99,11 +99,15 @@ try {
     assert.equal(tools.length, 6);
     assert.equal(commands[0].name, "adc");
     assert.equal(rules.length, 1);
+    const onboarding = await commands[0].handler("setup");
+    assert(onboarding.submitPrompt.includes("--cli-only"));
+    assert(onboarding.submitPrompt.includes("adc login --url"));
     for (const dispose of disposals) dispose();
     report.cline = {
       sdk: "0.0.93",
       loaded: true,
       hostLoader: true,
+      embeddedSetup: true,
       tools: tools.length,
       commands: 1,
       rules: 1

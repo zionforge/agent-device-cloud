@@ -7,7 +7,11 @@ import {
 
 export function createClinePlugin(
   createTool: any,
-  options: { allowSideEffects?: boolean; transportFactory?: typeof createCliTransport } = {}
+  options: {
+    allowSideEffects?: boolean;
+    transportFactory?: typeof createCliTransport;
+    setupGuidance?: string;
+  } = {}
 ) {
   return {
     name: "agent-device-cloud",
@@ -17,7 +21,10 @@ export function createClinePlugin(
       const transport = (options.transportFactory ?? createCliTransport)();
       let allowSideEffects = options.allowSideEffects === true;
       ctx.onDispose?.(() => transport.dispose());
-      api.registerRule({ id: "adc-workflow", content: WORKFLOW_GUIDANCE });
+      api.registerRule({
+        id: "adc-workflow",
+        content: `${WORKFLOW_GUIDANCE} If ADC is not connected, guide the user to /adc setup for installation and sign-in.`
+      });
       api.registerCommand({
         name: "adc",
         description: "ADC status, devices, setup, approval and session execution mode",
@@ -34,9 +41,14 @@ export function createClinePlugin(
           if (action === "setup")
             return {
               submitPrompt:
-                "Help me start using ADC with the agent-device-cloud Skill. Guide account sign-in, device setup and scoped connection, then verify a read-only result."
+                "Help me start using ADC. Guide CLI installation, account sign-in, device setup and scoped connection, then verify a read-only result. The user completes login and approval.\n\n" +
+                (options.setupGuidance ??
+                  `Use the official getting-started guide at ${transport.origin}/docs/integrations#skill.`)
             };
-          if (action === "approval") return { reply: `${transport.origin}/approvals` };
+          if (action === "approval") {
+            await transport.status();
+            return { reply: `${transport.origin}/approvals` };
+          }
           return {
             reply: JSON.stringify(
               await executeNativeTool(

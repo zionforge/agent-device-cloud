@@ -1,8 +1,8 @@
 # ADC harness plugin validation
 
-Plugin release: **0.1.0**. Validation date: **2026-10-16**.
+Plugin release: **0.1.1**. Validation date: **2026-10-16**.
 
-The focused ADC suite passed **38 tests**; Zion's host routing suite passed **2 tests**.
+The focused ADC suite passed **40 tests**; Zion's host routing suite passed **2 tests**.
 Schema checks, TypeScript, ESLint, formatting, production build and diff checks passed.
 
 The control plane adds a server-calculated `online` field to `device.list` and `device.status`
@@ -50,7 +50,7 @@ Zion's current Plugin API v2 provides the real RuntimePluginService and Workbenc
 | Claude Code 2.1.63  | Manifest validation, local marketplace registration and plugin installation                                                                                       |
 | Codex CLI 0.131.0   | Local marketplace registration and plugin installation using the bundled compatibility manifest                                                                   |
 | Pi 0.74.2           | Actual extension loader, six tools, `/adc` command, noninteractive mutation rejection and shutdown                                                                |
-| Cline SDK 0.0.93    | Actual host plugin loader and registration of six tools, one command and one rule                                                                                 |
+| Cline SDK 0.0.93    | Actual host plugin loader, six tools, one command, one rule and self-contained onboarding for single-file installation                                            |
 | OpenCode SDK 1.19.0 | Actual tool helper, bundled entry import, six tools, four commands and disposal                                                                                   |
 | Zion Plugin API v2  | Runtime activation, six tools with four available under read-only policy, ZIP import, three Skills, CSS, private-state snapshot filtering and direct KV rejection |
 
