@@ -127,6 +127,11 @@ const app = await createControlPlane({
       process.env.ADC_SKILL_RELEASE_DIR ??
       fileURLToPath(new URL("../../../dist/skills", import.meta.url))
   },
+  pluginDistribution: {
+    directory:
+      process.env.ADC_PLUGIN_RELEASE_DIR ??
+      fileURLToPath(new URL("../../../dist/plugins", import.meta.url))
+  },
   ...(process.env.ADC_TRUSTED_PROXIES
     ? { trustProxy: process.env.ADC_TRUSTED_PROXIES.split(",") }
     : {})

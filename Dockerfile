@@ -8,6 +8,8 @@ COPY tests ./tests
 COPY scripts ./scripts
 COPY deploy ./deploy
 COPY skills ./skills
+COPY plugins ./plugins
+COPY docs/harness-plugin-validation.md ./docs/harness-plugin-validation.md
 RUN pnpm install --frozen-lockfile
 RUN pnpm build
 RUN pnpm build:node

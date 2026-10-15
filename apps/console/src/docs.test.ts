@@ -122,4 +122,30 @@ describe("documentation navigation", () => {
       expect(html).toContain("references/");
     }
   );
+
+  it.each(["en", "zh-CN"] as const)(
+    "publishes plugin installation and real compatibility limits in %s",
+    (locale) => {
+      const html = renderDocs("/docs/integrations", locale);
+      expect(html).toContain('id="plugins"');
+      expect(html).toContain("/downloads/plugins/agent-device-cloud-marketplace.zip");
+      expect(html).toContain("/downloads/plugins/agent-device-cloud-zion.zip");
+      expect(html).toContain("/downloads/plugins/index.json");
+      for (const host of [
+        "Claude Code",
+        "Codex",
+        "Cursor",
+        "Copilot",
+        "Gemini CLI",
+        "Factory Droid",
+        "Pi",
+        "Cline",
+        "OpenCode"
+      ])
+        expect(html).toContain(host);
+      expect(html).toContain("VALIDATION.md");
+      expect(html).toContain(locale === "en" ? "not published yet" : "尚未发布");
+      expect(html).toContain(locale === "en" ? "Plugin API v2" : "Plugin API v2");
+    }
+  );
 });

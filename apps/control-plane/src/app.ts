@@ -73,6 +73,10 @@ import { TaskWaitHub } from "./task-wait.ts";
 import { PublicSite, type HostedAnalyticsOptions } from "./public-site.ts";
 import type { AssetStore } from "./asset-store.ts";
 import { registerSkillDistributionRoutes, type SkillDistribution } from "./skill-distribution.ts";
+import {
+  registerPluginDistributionRoutes,
+  type PluginDistribution
+} from "./plugin-distribution.ts";
 
 export interface ControlPlaneOptions {
   store: Store;
@@ -85,6 +89,7 @@ export interface ControlPlaneOptions {
   nodeDistribution?: NodeDistribution;
   androidDistribution?: AndroidDistribution;
   skillDistribution?: SkillDistribution;
+  pluginDistribution?: PluginDistribution;
   trustProxy?: string[];
   /** Opt-in cross-origin origins for API consumers. See registerCors(). */
   corsOrigins?: string[] | "*";
@@ -1307,6 +1312,10 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
           platform: node.platform,
           status: node.status,
           lastSeenAt: node.lastSeenAt,
+          online:
+            node.status === "active" &&
+            !!node.lastSeenAt &&
+            now().getTime() - Date.parse(node.lastSeenAt) <= presenceTtlMs,
           capability: node.capability
             ? {
                 ...node.capability,
@@ -1860,6 +1869,7 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
 
   registerDistributionRoutes(app, options.nodeDistribution);
   registerSkillDistributionRoutes(app, options.skillDistribution);
+  registerPluginDistributionRoutes(app, options.pluginDistribution);
   registerAndroidDistributionRoutes(app, options.androidDistribution);
   app.get("/api/v1/node-installation", { preHandler: requireOwner }, async () => {
     const androidPreview = await androidPreviewInfo(options.androidDistribution);

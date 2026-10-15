@@ -26,6 +26,7 @@ import {
 import { Link, useLocation } from "react-router-dom";
 import { useI18n, type Message } from "./i18n.tsx";
 import { PublicFooter, PublicHeader, repositoryUrl } from "./public-header.tsx";
+import { HarnessPlugins } from "./harness-plugins.tsx";
 
 export type DocsPageId =
   | "overview"
@@ -968,11 +969,12 @@ function Integrations() {
     <>
       <PageIntro
         eyebrow={t("Integrations")}
-        title="MCP · CLI · Skill · SDK"
+        title="Plugins · MCP · CLI · Skill · SDK"
         description={t(
           "Tools use the same schemas and policy path across HTTP, CLI, MCP, SDK and Skill."
         )}
       />
+      <HarnessPlugins origin={origin} />
       <Section id="oauth-mcp" title={t("Connect an MCP client")}>
         <p>
           {t(
