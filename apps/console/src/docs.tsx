@@ -10,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleHelp,
-  Clipboard,
   Code2,
   GitPullRequest,
   History,
@@ -27,6 +26,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useI18n, type Message } from "./i18n.tsx";
 import { PublicFooter, PublicHeader, repositoryUrl } from "./public-header.tsx";
 import { HarnessPlugins } from "./harness-plugins.tsx";
+import { CodeBlock } from "./docs-code.tsx";
 
 export type DocsPageId =
   | "overview"
@@ -134,37 +134,6 @@ export function docsPageId(pathname: string): DocsPageId | undefined {
 function useDocCopy() {
   const { locale } = useI18n();
   return (en: string, zh: string) => (locale === "zh-CN" ? zh : en);
-}
-
-function CodeBlock({ label, children }: { label: string; children: string }) {
-  const { t } = useI18n();
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="docs-code">
-      <div>
-        <span>{label}</span>
-        <button
-          className="icon-button"
-          title={t("Copy command")}
-          aria-label={t("Copy command")}
-          onClick={() => {
-            void navigator.clipboard
-              .writeText(children)
-              .then(() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              })
-              .catch(() => setCopied(false));
-          }}
-        >
-          {copied ? <Check size={15} /> : <Clipboard size={15} />}
-        </button>
-      </div>
-      <pre>
-        <code>{children}</code>
-      </pre>
-    </div>
-  );
 }
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -969,11 +938,18 @@ function Integrations() {
     <>
       <PageIntro
         eyebrow={t("Integrations")}
-        title="Plugins · MCP · CLI · Skill · SDK"
-        description={t(
-          "Tools use the same schemas and policy path across HTTP, CLI, MCP, SDK and Skill."
+        title={copy("Connect ADC to your Agent", "把 ADC 接入你的 Agent")}
+        description={copy(
+          "Install a plugin for guided setup, or connect authorized devices through MCP, Skill or CLI.",
+          "安装插件获得接入引导，或通过 MCP、Skill 与 CLI 连接已授权设备。"
         )}
       />
+      <nav className="integration-nav" aria-label={copy("Connection methods", "接入方式")}>
+        <a href="#plugins">{copy("Agent plugins", "Agent 插件")}</a>
+        <a href="#skill">{copy("Official Skill", "官方 Skill")}</a>
+        <a href="#oauth-mcp">MCP</a>
+        <a href="#cli">CLI</a>
+      </nav>
       <HarnessPlugins origin={origin} />
       <Section id="oauth-mcp" title={t("Connect an MCP client")}>
         <p>

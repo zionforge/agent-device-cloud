@@ -2028,6 +2028,260 @@ legend {
 .docs-code code {
   color: inherit;
 }
+.docs-copy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #bbb;
+  font-size: 11px;
+}
+.docs-copy-button:hover {
+  background: #2b2b2b;
+  color: #fff;
+}
+.docs-copy-button:focus-visible {
+  outline-color: #eee;
+  outline-offset: 2px;
+}
+.integration-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+  margin: -12px 0 30px;
+}
+.integration-nav a {
+  padding-block: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.integration-nav a:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+.plugin-workspace {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 30px;
+  margin-top: 28px;
+}
+.plugin-hosts {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.plugin-hosts legend {
+  margin-bottom: 14px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.plugin-host-options {
+  display: grid;
+  gap: 3px;
+}
+.plugin-host-options label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 9px 12px;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.plugin-host-options label:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.plugin-host-options label.selected {
+  background: #edf2ee;
+  color: #35533c;
+  font-weight: 600;
+}
+.plugin-host-options input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  opacity: 0;
+}
+.plugin-host-options label:has(input:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.plugin-installation-container {
+  min-width: 0;
+  padding-left: 30px;
+  border-left: 1px solid var(--line);
+}
+.plugin-installation {
+  animation: plugin-reveal 0.16s ease-out;
+}
+.plugin-installation-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 26px;
+}
+.plugin-installation-heading h3 {
+  margin: 0;
+  font-size: 20px;
+}
+.plugin-installation-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.plugin-installation-steps {
+  display: grid;
+  gap: 28px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plugin-installation-steps > li {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 12px;
+}
+.plugin-installation-steps > li > span {
+  padding-top: 3px;
+  color: #999;
+  font-size: 11px;
+}
+.plugin-installation-steps h4 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 550;
+}
+.plugin-installation-steps p {
+  font-size: 13px;
+  line-height: 1.8;
+}
+.plugin-download {
+  margin-top: 16px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.plugin-installation .docs-code {
+  margin: 16px 0 0;
+}
+.plugin-installation p.plugin-installation-note {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.plugin-installation-details {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.plugin-installation-details summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  list-style: none;
+}
+.plugin-installation-details summary::-webkit-details-marker {
+  display: none;
+}
+.plugin-installation-details summary svg {
+  transition: transform 0.15s;
+}
+.plugin-installation-details[open] summary svg {
+  transform: rotate(180deg);
+}
+.plugin-installation-details p {
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.plugin-installation-details a {
+  display: inline-block;
+  margin-top: 14px;
+}
+.plugin-resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.plugin-resources a {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration-color: #ccc;
+}
+.plugin-resources a:hover {
+  color: var(--ink);
+}
+@keyframes plugin-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 1080px) {
+  .plugin-workspace {
+    grid-template-columns: 150px minmax(0, 1fr);
+    gap: 20px;
+  }
+  .plugin-installation-container {
+    padding-left: 20px;
+  }
+}
+@media (max-width: 760px) {
+  .plugin-workspace {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 26px;
+  }
+  .plugin-host-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px 12px;
+  }
+  .plugin-host-options label {
+    min-height: 44px;
+  }
+  .plugin-hosts legend {
+    padding-left: 0;
+  }
+  .plugin-installation-container {
+    padding: 24px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .plugin-installation {
+    animation: none;
+  }
+  .plugin-host-options label,
+  .plugin-installation-details summary svg {
+    transition: none;
+  }
+}
 .docs-steps {
   margin: 0;
   padding: 0;
