@@ -181,6 +181,42 @@ Archive hashes verify integrity; HTTPS establishes the distribution origin. `adc
 explicit and downloads the complete runtime-containing archive. Detached signatures, differential
 packages and unattended updates are not included.
 
+## Hosted ADC release distribution
+
+The production Control Plane at `https://adc.zioon.tech` uses this public Alibaba OSS directory:
+
+```text
+https://adc-zioon-downloads.oss-cn-shanghai.aliyuncs.com/node
+```
+
+`ADC_NODE_DOWNLOAD_URL` is set to that directory in the production service environment. The console
+therefore generates OSS installer URLs, and the published Unix and Windows installers embed the
+same archive/update source. The dedicated `adc-zioon-downloads` bucket is in `cn-shanghai`, uses
+Standard storage and public reads, and requires authenticated writes.
+
+Caddy redirects the exact published Node filenames under `/downloads/node/`, plus `/install.sh`
+and `/install.ps1`, to OSS with HTTP 302. Both the production domain and the legacy ADC `nip.io`
+origin support these redirects. Existing installation commands and saved update URLs continue to
+work. Unknown filenames still return 404. The application, pairing and other download routes
+continue to use the Control Plane.
+
+For subsequent releases:
+
+1. Build with `--download-url https://adc-zioon-downloads.oss-cn-shanghai.aliyuncs.com/node`.
+2. Upload and verify the content-addressed archives first; retain older archives for cached
+   installers. Set `Cache-Control: public, max-age=31536000, immutable` on archives and `no-cache`
+   on installers, manifests and `SHA256SUMS`.
+3. Publish the metadata and installers in the order described above. Check public availability,
+   full archive SHA-256 values, and HTTP Range responses before enabling the release.
+4. Add the new exact archive filenames to the Caddy redirect lists on both ADC origins, preserving
+   the existing names. Validate the Caddy configuration before reloading it.
+5. Verify both manifests, legacy installer URLs, the console's installation source and `/health`;
+   run an isolated CLI installation before considering publication complete.
+
+Keep a backup of `/etc/caddy/Caddyfile` and `/etc/agent-device-cloud/adc.env` before configuration
+changes. To revert the distribution switch, restore both files, restart `agent-device-cloud.service`
+and reload Caddy. The original server-side archives remain available for this rollback.
+
 ## Serve releases with the Control Plane
 
 `pnpm build:node` produces `dist/node`; the Control Plane serves:
