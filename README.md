@@ -280,6 +280,12 @@ adc invoke file.write --node node_example \
 adc invoke shell.exec --node node_example \
   --args '{"cwd":"/Users/me/work","command":"pnpm test"}' \
   --idempotency-key test-workspace-once --json
+adc transfer create \
+  --source-node node_source --source-root root_source --source-path models/model.bin \
+  --destination-node node_target --destination-root root_target \
+  --destination-path cache/model.bin \
+  --idempotency-key model-copy-1 --wait 4000 --json
+adc transfer wait xfr_example --wait 4000 --json
 adc invocation status <invocation-id> --json
 adc task status <job-id> --json
 adc task wait <job-id> --wait 4000 --json
@@ -416,6 +422,12 @@ mode-dependent sensitive-path checks, bounded reads and atomic writes. Legacy `r
 path calls remain accepted during migration. Node receipts survive restarts; uncertain effects
 return `unknown_outcome`. Processes stop on cancellation, timeout or lease expiry. Long output uses
 authenticated artifacts.
+
+Native `file.transfer` jobs copy one regular file between two authorized desktop Nodes through the
+Control Plane's local persistent relay. They do not require TOS, S3 or direct Node connectivity.
+Configure and monitor `ADC_TRANSFER_DIR`; the default is `./data/transfers`, and the default
+per-transfer limit is 100 GiB. Version 0.1 never overwrites a destination and does not copy
+directories. See [native node-to-node transfer](docs/native-node-transfer.md).
 
 `restricted-process` executes with the Node OS user's authority. Its command classifier and output
 redaction are guardrails; arbitrary code can access host files and networking. Node's portable path

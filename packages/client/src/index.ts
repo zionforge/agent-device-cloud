@@ -1,6 +1,7 @@
 import {
   ControlPlaneTools,
   ErrorSchema,
+  FileTransferArgsSchema,
   InvocationSchema,
   WaitMsSchema,
   ResultSchema,
@@ -249,9 +250,20 @@ export function buildInvocation(input: {
   }
   const args = (input.args ?? {}) as Record<string, unknown>;
   const absolutePath = absolutePathForToolArgs(tool, args);
+  const transferTarget =
+    tool === "file.transfer"
+      ? { nodeId: FileTransferArgsSchema.parse(input.args).source.nodeId }
+      : undefined;
   const target =
     input.target ??
+    transferTarget ??
     (absolutePath ? absolutePathTarget(input.context) : defaultTarget(input.context, tool));
+  if (
+    tool === "file.transfer" &&
+    (!("nodeId" in target) || target.nodeId !== transferTarget?.nodeId)
+  ) {
+    throw new Error("file.transfer target must be its source node");
+  }
   if (absolutePath && !("nodeId" in target)) {
     throw new Error("Absolute paths require an explicit target.nodeId.");
   }
@@ -272,11 +284,16 @@ export function buildInvocation(input: {
     ? input.context.rootAccess === "all"
       ? [legacyRootId]
       : input.context.rootIds
-    : absoluteRoot
-      ? [absoluteRoot.rootId]
-      : input.context.rootAccess === "all"
-        ? (targetRootIds ?? input.context.rootIds)
-        : input.context.rootIds;
+    : tool === "file.transfer"
+      ? [
+          FileTransferArgsSchema.parse(input.args).source.rootId,
+          FileTransferArgsSchema.parse(input.args).destination.rootId
+        ]
+      : absoluteRoot
+        ? [absoluteRoot.rootId]
+        : input.context.rootAccess === "all"
+          ? (targetRootIds ?? input.context.rootIds)
+          : input.context.rootIds;
   return InvocationSchema.parse({
     schemaVersion: "0.1",
     invocationId: createId("inv"),

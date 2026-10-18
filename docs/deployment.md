@@ -24,6 +24,8 @@ anonymous administration endpoint is created. Use the [README](../README.md) for
 | `ADC_SKILL_RELEASE_DIR`                            | Official Skill archives and discovery indexes; defaults to `dist/skills`                   |
 | `ADC_ANDROID_RELEASE_HOST_DIR`                     | Compose host directory mounted read-only as the Android release directory                  |
 | `ADC_ASSET_DIR`                                    | Persistent content-addressed storage for image artifacts; required for screen capture      |
+| `ADC_TRANSFER_DIR`                                 | Persistent local relay storage for in-flight native file-transfer chunks                   |
+| `ADC_TRANSFER_MAX_BYTES`                           | Maximum declared size of one native transfer; defaults to 100 GiB                          |
 | `HOST`, `PORT`                                     | Default API bind is `127.0.0.1:8787`; Compose uses its private network                     |
 | `ADC_NODE_CONFIG`                                  | Local device configuration override                                                        |
 | `ADC_CONFIG`                                       | Local CLI token configuration override; management session uses a separate `.session` file |
@@ -147,8 +149,11 @@ on persistent local storage; Unix config and ledger files use mode 0600. See
 Back up the whole ADC database: it includes users, password hashes, sessions, OAuth token state,
 pairing records, grants, dispatches, audit, artifact metadata and text artifacts. Back up
 `ADC_ASSET_DIR` with the same recovery point because image artifacts are content-addressed files
-there. Also back up `.env` securely and preserve device configurations/receipt state on their
-respective devices. Do not upload device private keys to the control plane.
+there. `ADC_TRANSFER_DIR` contains only in-flight native-transfer chunks; include it at the same
+recovery point only when preserving resumable in-flight work is required. Completed transfer chunks
+are removed after terminal reconciliation. Also back up `.env` securely and preserve device
+configurations/receipt state on their respective devices. Do not upload device private keys to the
+control plane.
 
 Example database backup, from the repository directory:
 
@@ -204,9 +209,13 @@ bootstrap endpoint that grants control of old data.
 
 Text artifacts currently use PostgreSQL blobs. PNG screen captures use `ADC_ASSET_DIR`, with only
 their metadata retained in PostgreSQL. Each artifact is capped at 25 MiB; account storage quotas,
-retention jobs and an S3 adapter are not implemented. Monitor both database and asset-directory disk
-usage. Desktop daemons default to six concurrent tasks and apply the device's configured concurrency
-limit. There is no OS-enforced CPU/memory/network sandbox or multi-region service orchestration.
-The implementation tests run
+retention jobs and an S3 adapter are not implemented. Native file transfer uses
+`ADC_TRANSFER_DIR`, not external object storage; monitor capacity for the full size of concurrent
+in-flight transfers. A multi-replica Control Plane needs a shared filesystem at that path or
+single-replica routing for transfer endpoints. See
+[native node-to-node transfer](native-node-transfer.md). Monitor database, asset-directory and
+transfer-directory disk usage. Desktop daemons default to six concurrent tasks and apply the
+device's configured concurrency limit. There is no OS-enforced CPU/memory/network sandbox or
+multi-region service orchestration. The implementation tests run
 against real PostgreSQL; container image startup, TLS issuance and SMTP deliverability must also be
 verified in the target deployment.

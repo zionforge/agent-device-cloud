@@ -41,6 +41,10 @@ Usage:
              [--idempotency-key KEY] [--execution-timeout MILLISECONDS]
   adc invocation status INVOCATION
   adc task status|result|wait|cancel JOB [--wait MILLISECONDS]
+  adc transfer create --source-node NODE --source-root ROOT --source-path PATH
+                      --destination-node NODE --destination-root ROOT --destination-path PATH
+                      --idempotency-key KEY [--chunk-size BYTES] [--wait MILLISECONDS]
+  adc transfer status|wait|cancel TRANSFER [--wait MILLISECONDS]
   adc artifact get ID
   adc audit show|list
   adc mcp
@@ -247,6 +251,68 @@ async function main(): Promise<void> {
   }
   if (domain === "node" && action === "pairing-code") {
     print(await client.createPairingCode(Number(stringFlag(flags, "ttl") ?? 600)), json);
+    return;
+  }
+  if (domain === "transfer" && action === "create") {
+    const me = await client.me();
+    if (me.kind !== "agent") throw new Error("An Agent connection is required.");
+    const sourceNode = requiredFlag(flags, "source-node");
+    const destinationNode = requiredFlag(flags, "destination-node");
+    const sourceRoot = requiredFlag(flags, "source-root");
+    const destinationRoot = requiredFlag(flags, "destination-root");
+    for (const nodeId of [sourceNode, destinationNode]) {
+      if (!me.context.nodeIds?.includes(nodeId)) {
+        throw new Error(`Device is outside this connection's authorization: ${nodeId}`);
+      }
+    }
+    for (const rootId of [sourceRoot, destinationRoot]) {
+      if (me.context.rootAccess !== "all" && !me.context.rootIds.includes(rootId)) {
+        throw new Error(`Folder is outside this connection's authorization: ${rootId}`);
+      }
+    }
+    const invocation = buildInvocation({
+      context: me.context,
+      tool: "file.transfer",
+      args: {
+        source: {
+          nodeId: sourceNode,
+          rootId: sourceRoot,
+          path: requiredFlag(flags, "source-path")
+        },
+        destination: {
+          nodeId: destinationNode,
+          rootId: destinationRoot,
+          path: requiredFlag(flags, "destination-path")
+        },
+        overwrite: "never",
+        ...(stringFlag(flags, "chunk-size")
+          ? { chunkSizeBytes: Number(stringFlag(flags, "chunk-size")) }
+          : {})
+      },
+      source: "cli",
+      idempotencyKey: requiredFlag(flags, "idempotency-key"),
+      ...(stringFlag(flags, "execution-timeout")
+        ? { executionTimeoutMs: Number(stringFlag(flags, "execution-timeout")) }
+        : {})
+    });
+    const waitMs = Number(stringFlag(flags, "wait") ?? 0);
+    const result = await client.invoke(invocation, { waitMs });
+    print(result, json);
+    process.exitCode = exitCode(result);
+    return;
+  }
+  if (domain === "transfer" && ["status", "wait", "cancel"].includes(action ?? "")) {
+    const transferId = positionals[2];
+    if (!transferId) throw new Error("transfer id is required");
+    const jobId = transferId.startsWith("job_") ? transferId : `job_${transferId}`;
+    const result =
+      action === "cancel"
+        ? await client.cancelTask(jobId)
+        : action === "wait"
+          ? await client.taskWait(jobId, Number(stringFlag(flags, "wait") ?? 4000))
+          : await client.taskStatus(jobId);
+    print(result, json);
+    process.exitCode = exitCode(result);
     return;
   }
   if (domain === "tool" && (action === "list" || action === "show")) {

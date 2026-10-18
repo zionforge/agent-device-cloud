@@ -172,6 +172,58 @@ describe("device invocation context", () => {
     ).toThrow("idempotencyKey");
   });
 
+  it("binds native transfers to the source node and both authorized roots", () => {
+    const built = buildInvocation({
+      context: {
+        ...context,
+        nodeIds: ["node_source", "node_destination"],
+        rootIds: ["root_source", "root_destination"]
+      },
+      tool: "file.transfer",
+      args: {
+        source: {
+          nodeId: "node_source",
+          rootId: "root_source",
+          path: "models/model.bin"
+        },
+        destination: {
+          nodeId: "node_destination",
+          rootId: "root_destination",
+          path: "cache/model.bin"
+        }
+      },
+      idempotencyKey: "native-transfer-example",
+      source: "sdk"
+    });
+
+    expect(built).toMatchObject({
+      target: { nodeId: "node_source" },
+      authorization: { rootIds: ["root_source", "root_destination"] },
+      args: { overwrite: "never", chunkSizeBytes: 8 * 1024 * 1024 }
+    });
+
+    expect(() =>
+      buildInvocation({
+        context,
+        tool: "file.transfer",
+        args: {
+          source: {
+            nodeId: "node_macbook",
+            rootId: "root_workspace",
+            path: "source.bin"
+          },
+          destination: {
+            nodeId: "node_macbook",
+            rootId: "root_workspace",
+            path: "destination.bin"
+          }
+        },
+        idempotencyKey: "same-node-transfer",
+        source: "sdk"
+      })
+    ).toThrow(/source and destination nodes/);
+  });
+
   it("exposes bounded audit and approval page contracts", async () => {
     const requests: URL[] = [];
     const fetcher = (async (input: RequestInfo | URL) => {

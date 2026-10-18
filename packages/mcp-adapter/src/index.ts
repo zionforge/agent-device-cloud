@@ -427,6 +427,8 @@ function descriptionFor(tool: ToolName, context?: InvocationContext): string {
     "file.write": "Atomically write a file below an authorized root on target.nodeId.",
     "file.edit": "Apply an exact text replacement below an authorized root on target.nodeId.",
     "file.patch": "Apply a unified diff below an authorized root on target.nodeId.",
+    "file.transfer":
+      "Transfer one regular file between two authorized devices with resumable verification.",
     "shell.exec":
       "Run a command below an authorized root on target.nodeId; Windows uses PowerShell and macOS/Linux use Bash.",
     "command.template.list": "List locally configured commands for the authorized folders.",

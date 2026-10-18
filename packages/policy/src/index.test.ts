@@ -147,6 +147,70 @@ describe("evaluatePolicy", () => {
     ).toMatchObject({ outcome: "deny", reasonCode: "root.read_only" });
   });
 
+  it("allows a read-only transfer source but requires a writable destination", () => {
+    const args = {
+      source: {
+        nodeId: "node_macbook",
+        rootId: "root_workspace",
+        path: "model.bin"
+      },
+      destination: {
+        nodeId: "node_destination",
+        rootId: "root_destination",
+        path: "model.bin"
+      }
+    };
+    const transferContext = context({
+      account: { ...context().account, allowedTools: ["file.transfer"] },
+      agent: {
+        ...context().agent,
+        nodeIds: ["node_macbook", "node_destination"],
+        rootIds: ["root_workspace", "root_destination"],
+        allowedTools: ["file.transfer"],
+        approvalPolicy: "never"
+      },
+      node: {
+        ...context().node,
+        advertisedTools: ["file.transfer"],
+        roots: [{ rootId: "root_workspace", writable: false }]
+      }
+    });
+    const source = InvocationSchema.parse({
+      ...invocation(),
+      tool: "file.transfer",
+      args,
+      idempotencyKey: "transfer-source-policy",
+      authorization: {
+        ...invocation().authorization,
+        rootIds: ["root_workspace"]
+      }
+    });
+    expect(evaluatePolicy(transferContext, source)).toMatchObject({ outcome: "allow" });
+
+    const destination = InvocationSchema.parse({
+      ...source,
+      invocationId: "inv_transferdestination",
+      attemptId: "att_transferdestination",
+      target: { nodeId: "node_destination" },
+      authorization: {
+        ...source.authorization,
+        rootIds: ["root_destination"]
+      }
+    });
+    const destinationContext = {
+      ...transferContext,
+      node: {
+        ...transferContext.node,
+        nodeId: "node_destination",
+        roots: [{ rootId: "root_destination", writable: false }]
+      }
+    };
+    expect(evaluatePolicy(destinationContext, destination)).toMatchObject({
+      outcome: "deny",
+      reasonCode: "root.read_only"
+    });
+  });
+
   it("keeps account approval requirements above the Agent preference", () => {
     expect(
       evaluatePolicy(

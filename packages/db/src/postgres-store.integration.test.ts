@@ -1,8 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PostgresMemoryServer } from "postgres-memory-server";
-import { CapabilitySchema, InvocationSchema, createId } from "@adc/protocol";
+import {
+  CapabilitySchema,
+  FileTransferArgsSchema,
+  InvocationSchema,
+  createId
+} from "@adc/protocol";
 import { PostgresStore } from "./postgres-store.ts";
-import type { DispatchRecord } from "./types.ts";
+import type { AuditEvent, DispatchRecord, TransferRecord } from "./types.ts";
 
 function dispatch(index: number): DispatchRecord {
   const now = new Date().toISOString();
@@ -371,6 +376,155 @@ describe("PostgresStore", () => {
     ).resolves.toMatchObject({ status: "approved" });
     await expect(
       store.resolveApproval(approval.approvalId, "denied", new Date())
+    ).resolves.toBeUndefined();
+  });
+
+  it("persists transfer state and rejects changed or terminal metadata", async () => {
+    const timestamp = new Date();
+    await store.putPairingCode({
+      codeHash: "pair-transfer-destination",
+      accountId: "acct_primary",
+      expiresAt: new Date(timestamp.getTime() + 60_000).toISOString()
+    });
+    await store.pairNode({
+      codeHash: "pair-transfer-destination",
+      now: timestamp,
+      node: {
+        nodeId: "node_postgres_destination",
+        label: "postgres-transfer-destination",
+        publicKey: "transfer-destination-key",
+        platform: "linux",
+        status: "active",
+        createdAt: timestamp.toISOString()
+      }
+    });
+    await store.putRoot({
+      rootId: "root_destination",
+      projectId: "proj_example",
+      nodeId: "node_postgres_destination",
+      label: "Destination",
+      writable: true,
+      createdAt: timestamp.toISOString()
+    });
+    const parent = InvocationSchema.parse({
+      schemaVersion: "0.1",
+      invocationId: createId("inv"),
+      attemptId: createId("att"),
+      accountId: "acct_primary",
+      actor: { type: "agent", id: "actor_testagent" },
+      target: { nodeId: "node_postgres" },
+      authorization: {
+        projectId: "proj_example",
+        rootIds: ["root_workspace"],
+        grantId: "grant_example"
+      },
+      tool: "file.transfer",
+      args: {
+        source: {
+          nodeId: "node_postgres",
+          rootId: "root_workspace",
+          path: "source.bin"
+        },
+        destination: {
+          nodeId: "node_postgres_destination",
+          rootId: "root_destination",
+          path: "destination.bin"
+        },
+        chunkSizeBytes: 1024 * 1024
+      },
+      idempotencyKey: "postgres-transfer",
+      issuedAt: timestamp.toISOString(),
+      expiresAt: new Date(timestamp.getTime() + 60_000).toISOString(),
+      metadata: { source: "sdk" }
+    });
+    const child = (role: "source" | "destination"): DispatchRecord => {
+      const endpoint = FileTransferArgsSchema.parse(parent.args)[role];
+      return {
+        dispatchId: createId("dsp"),
+        invocation: InvocationSchema.parse({
+          ...parent,
+          invocationId: createId("inv"),
+          attemptId: createId("att"),
+          target: { nodeId: endpoint.nodeId },
+          authorization: { ...parent.authorization, rootIds: [endpoint.rootId] },
+          idempotencyKey: `xfr_postgres-${role}`,
+          metadata: { source: "internal", correlationId: "xfr_postgres" }
+        }),
+        nodeId: endpoint.nodeId,
+        policyDecision: {
+          outcome: "allow",
+          reasonCode: "policy.allowed",
+          explanation: "Allowed in integration test.",
+          evaluatedLayers: ["account", "agent", "node", "root", "capability"],
+          profile: "workspace-write",
+          decisionHash: `sha256:${"a".repeat(64)}`
+        },
+        status: "queued",
+        createdAt: timestamp.toISOString(),
+        updatedAt: timestamp.toISOString()
+      };
+    };
+    const dispatches = [child("source"), child("destination")] as const;
+    const audits = dispatches.map((item): AuditEvent => ({
+      eventId: createId("dsp"),
+      accountId: "acct_primary",
+      invocationId: parent.invocationId,
+      type: "dispatch.queued",
+      payload: { dispatchId: item.dispatchId },
+      createdAt: timestamp.toISOString()
+    })) as [AuditEvent, AuditEvent];
+    const transfer: TransferRecord = {
+      transferId: "xfr_postgres",
+      invocation: parent,
+      args: FileTransferArgsSchema.parse(parent.args),
+      status: "queued",
+      sourceDispatchId: dispatches[0].dispatchId,
+      destinationDispatchId: dispatches[1].dispatchId,
+      bytesTransferred: 0,
+      createdAt: timestamp.toISOString(),
+      updatedAt: timestamp.toISOString()
+    };
+
+    await expect(store.createTransfer(transfer, [...dispatches], audits)).resolves.toMatchObject({
+      transferId: "xfr_postgres",
+      status: "queued"
+    });
+    await expect(
+      store.prepareTransfer("xfr_postgres", "node_postgres", {
+        byteSize: 5,
+        chunkCount: 1
+      })
+    ).resolves.toMatchObject({ status: "transferring", byteSize: 5, chunkCount: 1 });
+    await expect(
+      store.prepareTransfer("xfr_postgres", "node_postgres", {
+        byteSize: 6,
+        chunkCount: 1
+      })
+    ).rejects.toMatchObject({ code: "conflict" });
+
+    const digest = `sha256:${"b".repeat(64)}`;
+    await expect(
+      store.finalizeTransferSource("xfr_postgres", "node_postgres", digest)
+    ).resolves.toMatchObject({ contentSha256: digest });
+    await expect(
+      store.finalizeTransferSource("xfr_postgres", "node_postgres", `sha256:${"c".repeat(64)}`)
+    ).rejects.toMatchObject({ code: "conflict" });
+    await expect(
+      store.updateTransferProgress("xfr_postgres", "node_postgres_destination", 5, "verifying")
+    ).resolves.toMatchObject({ status: "verifying", bytesTransferred: 5 });
+    await expect(
+      store.updateTransferProgress("xfr_postgres", "node_postgres_destination", 4, "transferring")
+    ).resolves.toMatchObject({ status: "verifying", bytesTransferred: 5 });
+
+    await store.requestCancelTransfer("xfr_postgres", new Date());
+    await expect(
+      store.reconcileTransfer(dispatches[0].dispatchId, new Date())
+    ).resolves.toMatchObject({ status: "cancelled" });
+    await expect(
+      store.prepareTransfer("xfr_postgres", "node_postgres", {
+        byteSize: 5,
+        chunkCount: 1
+      })
     ).resolves.toBeUndefined();
   });
 

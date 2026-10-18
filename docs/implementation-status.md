@@ -38,6 +38,9 @@
   resubmitting the operation
 - Bounded `task.wait` across CLI/MCP/SDK with an existing job ID, terminal-state wakeup and
   a non-terminal response when the wait budget expires
+- Native single-file transfer between two authorized desktop Nodes through a self-hosted local
+  relay, with independent write approval, signed binary chunks, SHA-256 verification, resumable
+  destination state, atomic no-overwrite commit and cooperative cancellation
 - Local command-template add/list/remove commands with automatic Connector reload
 - Device-side MCP Provider registry for stdio and Streamable HTTP, automatic `tools/list`
   discovery, stable schema-versioned Tool IDs, local `tools/call` forwarding and hot reload
@@ -100,6 +103,9 @@
 - Symlink escape, secret redaction, command denial, timeout/cancel and output limits
 - Node restart plus lost completion request without duplicate side effects
 - Artifact upload/download
+- Two-Node native transfer without external object storage, including read-only source, writable
+  destination, owner approval, relay cleanup, cancellation, crash-resume commit proof and real
+  PostgreSQL transfer-state persistence
 - CLI and official MCP SDK parity
 - End-to-end Agent MCP → Control Plane → Node → local MCP Provider execution and receipt persistence
 - Android debug APK compilation, mobile canonical-JSON contract tests and Control Plane acceptance

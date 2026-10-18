@@ -4,6 +4,7 @@ import type {
   InvocationResult,
   PolicyDecision,
   Receipt,
+  FileTransferArgs,
   NodePlatform,
   ToolId
 } from "@adc/protocol";
@@ -143,6 +144,34 @@ export interface ArtifactRecord {
   createdAt: string;
 }
 
+export type TransferStatus =
+  | "awaiting_approval"
+  | "queued"
+  | "transferring"
+  | "verifying"
+  | "succeeded"
+  | "failed"
+  | "denied"
+  | "cancelled"
+  | "unknown_outcome";
+
+export interface TransferRecord {
+  transferId: string;
+  invocation: Invocation;
+  args: FileTransferArgs;
+  status: TransferStatus;
+  sourceDispatchId?: string;
+  destinationDispatchId?: string;
+  byteSize?: number;
+  chunkCount?: number;
+  contentSha256?: string;
+  bytesTransferred: number;
+  error?: { code: string; message: string };
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
 export interface ApprovalRecord {
   approvalId: string;
   accountId: string;
@@ -250,6 +279,40 @@ export interface Store {
     audit: AuditEvent,
     now: Date
   ): Promise<DispatchRecord | undefined>;
+  createTransfer(
+    transfer: TransferRecord,
+    dispatches: DispatchRecord[],
+    audits: AuditEvent[]
+  ): Promise<TransferRecord>;
+  approveAndStartTransfer(
+    approvalId: string,
+    transferId: string,
+    dispatches: DispatchRecord[],
+    audits: AuditEvent[],
+    now: Date
+  ): Promise<TransferRecord | undefined>;
+  getTransferById(transferId: string): Promise<TransferRecord | undefined>;
+  getTransferByInvocation(invocationId: string): Promise<TransferRecord | undefined>;
+  getTransferByDispatch(dispatchId: string): Promise<TransferRecord | undefined>;
+  prepareTransfer(
+    transferId: string,
+    sourceNodeId: string,
+    metadata: { byteSize: number; chunkCount: number }
+  ): Promise<TransferRecord | undefined>;
+  finalizeTransferSource(
+    transferId: string,
+    sourceNodeId: string,
+    contentSha256: string
+  ): Promise<TransferRecord | undefined>;
+  updateTransferProgress(
+    transferId: string,
+    destinationNodeId: string,
+    bytesTransferred: number,
+    status?: "transferring" | "verifying"
+  ): Promise<TransferRecord | undefined>;
+  reconcileTransfer(dispatchId: string, now: Date): Promise<TransferRecord | undefined>;
+  requestCancelTransfer(transferId: string, now: Date): Promise<TransferRecord | undefined>;
+  denyTransfer(transferId: string, now: Date): Promise<TransferRecord | undefined>;
   enqueue(dispatch: DispatchRecord, audit: AuditEvent): Promise<DispatchRecord>;
   claim(nodeId: string, now: Date, leaseMs: number): Promise<DispatchRecord | undefined>;
   acknowledge(

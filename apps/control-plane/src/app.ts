@@ -19,7 +19,8 @@ import {
   type DispatchRecord,
   type NodeRecord,
   type PageCursor,
-  type Store
+  type Store,
+  type TransferRecord
 } from "@adc/db";
 import { evaluatePolicy, sha256 } from "@adc/policy";
 import { createMcpServer } from "@adc/mcp-adapter";
@@ -27,11 +28,13 @@ import {
   ArtifactIdSchema,
   CapabilitySchema,
   ErrorCodes,
+  FileTransferArgsSchema,
   InvocationIdSchema,
   InvocationSchema,
   NodePlatformSchema,
   ProtocolError,
   ResultSchema,
+  TransferIdSchema,
   ToolIdSchema,
   ToolNameSchema,
   WaitMsSchema,
@@ -72,6 +75,7 @@ import { NodeWakeHub } from "./node-wake.ts";
 import { TaskWaitHub } from "./task-wait.ts";
 import { PublicSite, type HostedAnalyticsOptions } from "./public-site.ts";
 import type { AssetStore } from "./asset-store.ts";
+import type { TransferBlobStore } from "./transfer-store.ts";
 import { registerSkillDistributionRoutes, type SkillDistribution } from "./skill-distribution.ts";
 import {
   registerPluginDistributionRoutes,
@@ -95,6 +99,8 @@ export interface ControlPlaneOptions {
   corsOrigins?: string[] | "*";
   analytics?: HostedAnalyticsOptions;
   assetStore?: AssetStore;
+  transferStore?: TransferBlobStore;
+  maxTransferBytes?: number;
 }
 
 function nodeReleaseUpdate(buildId: string | undefined, latest: NodeReleaseSummary) {
@@ -116,6 +122,20 @@ function invocationPath(invocation: Invocation, node: NodeRecord | undefined): s
   const relativePath = invocation.tool.startsWith("file.") ? args.path : args.cwd;
   if (typeof relativePath !== "string" || relativePath === "") return rootPath;
   return rootPath === "/" ? `/${relativePath}` : `${rootPath}/${relativePath}`;
+}
+
+function transferPath(invocation: Invocation, nodes: Map<string, NodeRecord>): string | undefined {
+  if (invocation.tool !== "file.transfer") return;
+  const parsed = FileTransferArgsSchema.safeParse(invocation.args);
+  if (!parsed.success) return;
+  const endpointPath = (endpoint: typeof parsed.data.source) => {
+    const rootPath = nodes
+      .get(endpoint.nodeId)
+      ?.capability?.roots.find((root) => root.rootId === endpoint.rootId)?.path;
+    if (!rootPath) return endpoint.path;
+    return rootPath === "/" ? `/${endpoint.path}` : `${rootPath}/${endpoint.path}`;
+  };
+  return `${endpointPath(parsed.data.source)} -> ${endpointPath(parsed.data.destination)}`;
 }
 
 const PageCursorSchema = z
@@ -189,15 +209,23 @@ async function approvalView(
   accountId: string,
   approvals: ApprovalRecord[]
 ): Promise<Array<ApprovalRecord & { path?: string }>> {
+  const transferNodeIds = approvals.flatMap((approval) => {
+    const parsed = FileTransferArgsSchema.safeParse(approval.invocation.args);
+    return approval.invocation.tool === "file.transfer" && parsed.success
+      ? [parsed.data.source.nodeId, parsed.data.destination.nodeId]
+      : [];
+  });
   const nodes = new Map(
     (
       await store.listNodesByIds(accountId, [
-        ...new Set(approvals.map((approval) => approval.nodeId))
+        ...new Set([...approvals.map((approval) => approval.nodeId), ...transferNodeIds])
       ])
     ).map((node) => [node.nodeId, node])
   );
   return approvals.map((approval) => {
-    const path = invocationPath(approval.invocation, nodes.get(approval.nodeId));
+    const path =
+      transferPath(approval.invocation, nodes) ??
+      invocationPath(approval.invocation, nodes.get(approval.nodeId));
     return { ...approval, ...(path ? { path } : {}) };
   });
 }
@@ -282,15 +310,95 @@ function domainResult(
   });
 }
 
+function jobIdForTransfer(transferId: string): string {
+  return `job_${transferId}`;
+}
+
+function transferIdForJob(jobId: string): string | undefined {
+  const candidate = jobId.startsWith("job_") ? jobId.slice("job_".length) : "";
+  return TransferIdSchema.safeParse(candidate).success ? candidate : undefined;
+}
+
+function transferResult(transfer: TransferRecord): InvocationResult {
+  const output = {
+    transferId: transfer.transferId,
+    status: transfer.status,
+    source: transfer.args.source,
+    destination: transfer.args.destination,
+    bytesTransferred: transfer.bytesTransferred,
+    ...(transfer.byteSize === undefined ? {} : { byteSize: transfer.byteSize }),
+    ...(transfer.chunkCount === undefined ? {} : { chunkCount: transfer.chunkCount }),
+    ...(transfer.contentSha256 ? { contentSha256: transfer.contentSha256 } : {})
+  };
+  if (["queued", "awaiting_approval"].includes(transfer.status)) {
+    return ResultSchema.parse({
+      schemaVersion: "0.1",
+      invocationId: transfer.invocation.invocationId,
+      attemptId: transfer.invocation.attemptId,
+      status: "queued",
+      output,
+      jobId: jobIdForTransfer(transfer.transferId)
+    });
+  }
+  if (["transferring", "verifying"].includes(transfer.status)) {
+    return ResultSchema.parse({
+      schemaVersion: "0.1",
+      invocationId: transfer.invocation.invocationId,
+      attemptId: transfer.invocation.attemptId,
+      status: "running",
+      output,
+      jobId: jobIdForTransfer(transfer.transferId)
+    });
+  }
+  if (transfer.status === "succeeded") {
+    return ResultSchema.parse({
+      schemaVersion: "0.1",
+      invocationId: transfer.invocation.invocationId,
+      attemptId: transfer.invocation.attemptId,
+      status: "succeeded",
+      output,
+      jobId: jobIdForTransfer(transfer.transferId)
+    });
+  }
+  const status = transfer.status;
+  const code =
+    status === "cancelled"
+      ? ErrorCodes.CANCELLED
+      : status === "denied"
+        ? ErrorCodes.DENIED
+        : status === "unknown_outcome"
+          ? ErrorCodes.UNKNOWN_OUTCOME
+          : ErrorCodes.EXECUTION_FAILED;
+  return ResultSchema.parse({
+    schemaVersion: "0.1",
+    invocationId: transfer.invocation.invocationId,
+    attemptId: transfer.invocation.attemptId,
+    status,
+    output,
+    error: {
+      code: transfer.error?.code ?? code,
+      message: transfer.error?.message ?? `transfer ${status}`,
+      retryable: false
+    },
+    jobId: jobIdForTransfer(transfer.transferId)
+  });
+}
+
 export async function createControlPlane(options: ControlPlaneOptions): Promise<FastifyInstance> {
   const now = options.now ?? (() => new Date());
   const presenceTtlMs = options.presenceTtlMs ?? 45_000;
   const leaseMs = options.leaseMs ?? 30_000;
+  const maxTransferBytes = options.maxTransferBytes ?? 100 * 1024 * 1024 * 1024;
   const app = Fastify({
     logger: options.logger ?? false,
     bodyLimit: 36 * 1024 * 1024,
     trustProxy: options.trustProxy ?? false
   });
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { parseAs: "buffer" },
+    (_request, body, done) => done(null, body)
+  );
   const analyticsOrigin = options.analytics
     ? new URL(options.analytics.scriptUrl).origin
     : undefined;
@@ -487,6 +595,73 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       },
       invocation
     );
+  }
+
+  function transferChildInvocation(
+    parent: Invocation,
+    transferId: string,
+    role: "source" | "destination"
+  ): Invocation {
+    const args = FileTransferArgsSchema.parse(parent.args);
+    const endpoint = args[role];
+    return InvocationSchema.parse({
+      ...parent,
+      invocationId: createId("inv"),
+      attemptId: createId("att"),
+      target: { nodeId: endpoint.nodeId },
+      authorization: { ...parent.authorization, rootIds: [endpoint.rootId] },
+      idempotencyKey: `${transferId}-${role}`,
+      metadata: {
+        ...parent.metadata,
+        source: "internal",
+        correlationId: transferId
+      }
+    });
+  }
+
+  function transferDispatches(
+    parent: Invocation,
+    transferId: string,
+    decisions: { source: PolicyDecision; destination: PolicyDecision },
+    createdAt: string
+  ): [DispatchRecord, DispatchRecord] {
+    const child = (role: "source" | "destination", decision: PolicyDecision): DispatchRecord => {
+      const invocation = transferChildInvocation(parent, transferId, role);
+      return {
+        dispatchId: createId("dsp"),
+        invocation,
+        nodeId: (invocation.target as { nodeId: string }).nodeId,
+        policyDecision: decision,
+        status: "queued",
+        createdAt,
+        updatedAt: createdAt
+      };
+    };
+    return [child("source", decisions.source), child("destination", decisions.destination)];
+  }
+
+  function transferAudits(
+    invocation: Invocation,
+    transferId: string,
+    dispatches: [DispatchRecord, DispatchRecord],
+    createdAt: string
+  ): [AuditEvent, AuditEvent] {
+    const args = FileTransferArgsSchema.parse(invocation.args);
+    const event = (dispatch: DispatchRecord): AuditEvent => ({
+      eventId: createId("dsp"),
+      accountId: invocation.accountId,
+      invocationId: invocation.invocationId,
+      type: "dispatch.queued",
+      payload: {
+        transferId,
+        dispatchId: dispatch.dispatchId,
+        nodeId: dispatch.nodeId,
+        role: dispatch.nodeId === args.source.nodeId ? "source" : "destination",
+        policyDecision: dispatch.policyDecision
+      },
+      createdAt
+    });
+    return [event(dispatches[0]), event(dispatches[1])];
   }
 
   async function requireNode(request: FastifyRequest, reply: FastifyReply) {
@@ -1097,8 +1272,238 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         return apiError(reply, 409, ErrorCodes.LEASE_EXPIRED, "lease is invalid or superseded");
       }
       taskWaitHub.notify(completed.dispatchId);
+      const transfer = await options.store.reconcileTransfer(completed.dispatchId, now());
+      if (transfer) {
+        taskWaitHub.notify(transfer.transferId);
+        if (
+          ["succeeded", "failed", "denied", "cancelled", "unknown_outcome"].includes(
+            transfer.status
+          )
+        ) {
+          await options.transferStore?.deleteTransfer(transfer.transferId);
+        }
+      }
       countInvocation(completed.status, completed.invocation.tool);
       return { accepted: true, status: completed.status };
+    }
+  );
+
+  app.post(
+    "/api/v1/nodes/:nodeId/transfers/:transferId/prepare",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      if (!options.transferStore)
+        return apiError(reply, 503, ErrorCodes.OFFLINE, "transfer storage is unavailable", true);
+      const { nodeId, transferId } = z
+        .object({ nodeId: z.string(), transferId: TransferIdSchema })
+        .parse(request.params);
+      const body = z
+        .object({
+          byteSize: z.number().int().min(0).max(maxTransferBytes),
+          chunkCount: z.number().int().min(0).max(1_000_000)
+        })
+        .strict()
+        .parse(request.body);
+      const current = await options.store.getTransferById(transferId);
+      if (
+        !current ||
+        current.invocation.accountId !== nodeAccounts.get(request) ||
+        current.args.source.nodeId !== nodeId
+      ) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer was not found");
+      }
+      const expectedChunkCount = Math.ceil(body.byteSize / current.args.chunkSizeBytes);
+      if (body.chunkCount !== expectedChunkCount) {
+        return apiError(
+          reply,
+          400,
+          ErrorCodes.INVALID_REQUEST,
+          "transfer chunk count does not match its declared size"
+        );
+      }
+      const transfer = await options.store.prepareTransfer(transferId, nodeId, body);
+      if (!transfer || transfer.invocation.accountId !== nodeAccounts.get(request)) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer was not found");
+      }
+      taskWaitHub.notify(transferId);
+      return {
+        accepted: true,
+        transferId,
+        byteSize: transfer.byteSize,
+        chunkCount: transfer.chunkCount
+      };
+    }
+  );
+
+  app.put(
+    "/api/v1/nodes/:nodeId/transfers/:transferId/chunks/:index",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      if (!options.transferStore)
+        return apiError(reply, 503, ErrorCodes.OFFLINE, "transfer storage is unavailable", true);
+      const { nodeId, transferId, index } = z
+        .object({
+          nodeId: z.string(),
+          transferId: TransferIdSchema,
+          index: z.coerce.number().int().min(0).max(999_999)
+        })
+        .parse(request.params);
+      const transfer = await options.store.getTransferById(transferId);
+      if (
+        !transfer ||
+        transfer.invocation.accountId !== nodeAccounts.get(request) ||
+        transfer.args.source.nodeId !== nodeId ||
+        !["transferring", "verifying"].includes(transfer.status) ||
+        transfer.byteSize === undefined ||
+        transfer.chunkCount === undefined ||
+        index >= transfer.chunkCount
+      ) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer chunk was not found");
+      }
+      const data = request.body;
+      const digest = request.headers["x-adc-content-sha256"];
+      if (!Buffer.isBuffer(data) || typeof digest !== "string") {
+        return apiError(
+          reply,
+          400,
+          ErrorCodes.INVALID_REQUEST,
+          "binary chunk and SHA-256 are required"
+        );
+      }
+      const expectedBytes = Math.min(
+        transfer.args.chunkSizeBytes,
+        transfer.byteSize - index * transfer.args.chunkSizeBytes
+      );
+      if (data.byteLength !== expectedBytes) {
+        return apiError(
+          reply,
+          400,
+          ErrorCodes.INVALID_REQUEST,
+          "transfer chunk size does not match its index"
+        );
+      }
+      await options.transferStore.putChunk(transferId, index, data, digest);
+      taskWaitHub.notify(transferId);
+      return { accepted: true, transferId, index, bytes: data.byteLength };
+    }
+  );
+
+  app.get(
+    "/api/v1/nodes/:nodeId/transfers/:transferId/chunks/:index",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      if (!options.transferStore)
+        return apiError(reply, 503, ErrorCodes.OFFLINE, "transfer storage is unavailable", true);
+      const { nodeId, transferId, index } = z
+        .object({
+          nodeId: z.string(),
+          transferId: TransferIdSchema,
+          index: z.coerce.number().int().min(0).max(999_999)
+        })
+        .parse(request.params);
+      const transfer = await options.store.getTransferById(transferId);
+      if (
+        !transfer ||
+        transfer.invocation.accountId !== nodeAccounts.get(request) ||
+        transfer.args.destination.nodeId !== nodeId ||
+        !["transferring", "verifying"].includes(transfer.status) ||
+        transfer.chunkCount === undefined ||
+        index >= transfer.chunkCount
+      ) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer chunk was not found");
+      }
+      let data: Buffer;
+      try {
+        data = await options.transferStore.getChunk(transferId, index);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+          return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer chunk is not ready", true);
+        }
+        throw error;
+      }
+      return reply
+        .type("application/octet-stream")
+        .header("x-adc-content-sha256", `sha256:${createHash("sha256").update(data).digest("hex")}`)
+        .send(data);
+    }
+  );
+
+  app.get(
+    "/api/v1/nodes/:nodeId/transfers/:transferId",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      const { nodeId, transferId } = z
+        .object({ nodeId: z.string(), transferId: TransferIdSchema })
+        .parse(request.params);
+      const transfer = await options.store.getTransferById(transferId);
+      if (
+        !transfer ||
+        transfer.invocation.accountId !== nodeAccounts.get(request) ||
+        ![transfer.args.source.nodeId, transfer.args.destination.nodeId].includes(nodeId)
+      ) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer was not found");
+      }
+      return {
+        transferId,
+        status: transfer.status,
+        byteSize: transfer.byteSize,
+        chunkCount: transfer.chunkCount,
+        contentSha256: transfer.contentSha256,
+        bytesTransferred: transfer.bytesTransferred,
+        error: transfer.error
+      };
+    }
+  );
+
+  app.post(
+    "/api/v1/nodes/:nodeId/transfers/:transferId/finalize-source",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      const { nodeId, transferId } = z
+        .object({ nodeId: z.string(), transferId: TransferIdSchema })
+        .parse(request.params);
+      const { contentSha256 } = z
+        .object({ contentSha256: z.string().regex(/^sha256:[a-f0-9]{64}$/) })
+        .strict()
+        .parse(request.body);
+      const transfer = await options.store.finalizeTransferSource(
+        transferId,
+        nodeId,
+        contentSha256
+      );
+      if (!transfer || transfer.invocation.accountId !== nodeAccounts.get(request)) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer was not found");
+      }
+      taskWaitHub.notify(transferId);
+      return { accepted: true, transferId, contentSha256 };
+    }
+  );
+
+  app.post(
+    "/api/v1/nodes/:nodeId/transfers/:transferId/progress",
+    { preHandler: requireNode },
+    async (request, reply) => {
+      const { nodeId, transferId } = z
+        .object({ nodeId: z.string(), transferId: TransferIdSchema })
+        .parse(request.params);
+      const body = z
+        .object({
+          bytesTransferred: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+          status: z.enum(["transferring", "verifying"])
+        })
+        .strict()
+        .parse(request.body);
+      const transfer = await options.store.updateTransferProgress(
+        transferId,
+        nodeId,
+        body.bytesTransferred,
+        body.status
+      );
+      if (!transfer || transfer.invocation.accountId !== nodeAccounts.get(request)) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "transfer was not found");
+      }
+      taskWaitHub.notify(transferId);
+      return { accepted: true, transferId, bytesTransferred: transfer.bytesTransferred };
     }
   );
 
@@ -1216,6 +1621,100 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     );
   }
 
+  async function authorizeTransfer(
+    principal: Principal,
+    transfer: TransferRecord,
+    originalInvocation = false
+  ): Promise<void> {
+    if (
+      transfer.invocation.accountId !== principal.accountId ||
+      (principal.kind === "agent" &&
+        transfer.invocation.authorization.grantId !== principal.grantId)
+    ) {
+      throw new ProtocolError(ErrorCodes.DENIED, "Transfer is not visible.", false);
+    }
+    if (principal.kind !== "agent") return;
+    const grant = await options.store.getGrant(principal.grantId);
+    if (
+      !grant ||
+      grant.revokedAt ||
+      !(originalInvocation
+        ? grant.allowedTools.includes("file.transfer")
+        : grant.allowedTools.some((tool) =>
+            ["task.status", "task.result", "task.wait"].includes(tool)
+          ))
+    ) {
+      throw new ProtocolError(ErrorCodes.DENIED, "Transfer results are not granted.", false);
+    }
+  }
+
+  async function currentTransferResult(transfer: TransferRecord): Promise<InvocationResult> {
+    if (transfer.status !== "awaiting_approval") return transferResult(transfer);
+    const approval = await options.store.getApprovalByInvocation(transfer.invocation.invocationId);
+    const expired = !approval || Date.parse(approval.expiresAt) <= now().getTime();
+    if (approval?.status === "pending" && !expired) {
+      return domainResult(transfer.invocation, "approval_required", {
+        code: ErrorCodes.APPROVAL_REQUIRED,
+        message: approval.policyDecision.explanation,
+        retryable: false,
+        details: {
+          approvalId: approval.approvalId,
+          transferId: transfer.transferId,
+          expiresAt: approval.expiresAt,
+          reasonCode: approval.policyDecision.reasonCode,
+          policyDecision: approval.policyDecision
+        }
+      });
+    }
+    return domainResult(transfer.invocation, "denied", {
+      code: expired ? ErrorCodes.EXPIRED : ErrorCodes.DENIED,
+      message: expired
+        ? "Approval expired before the transfer was dispatched."
+        : "The transfer was denied by the account owner.",
+      retryable: false,
+      details: { transferId: transfer.transferId, approvalId: approval?.approvalId }
+    });
+  }
+
+  async function requestTransferCancellation(
+    transfer: TransferRecord,
+    timestamp: Date
+  ): Promise<TransferRecord | undefined> {
+    const cancelled = await options.store.requestCancelTransfer(transfer.transferId, timestamp);
+    if (!cancelled) return;
+    const approval = await options.store.getApprovalByInvocation(transfer.invocation.invocationId);
+    if (approval?.status === "pending") {
+      await options.store.resolveApproval(approval.approvalId, "denied", timestamp);
+    }
+    taskWaitHub.notify(transfer.transferId);
+    wakeNode(transfer.args.source.nodeId);
+    wakeNode(transfer.args.destination.nodeId);
+    return cancelled;
+  }
+
+  async function waitTransfer(
+    transfer: TransferRecord,
+    principal: Principal,
+    waitMs: number,
+    signal?: AbortSignal,
+    originalInvocation = false
+  ): Promise<InvocationResult> {
+    return taskWaitHub.wait(
+      transfer.transferId,
+      async () => {
+        const current = await options.store.getTransferById(transfer.transferId);
+        if (!current) {
+          throw new ProtocolError(ErrorCodes.NOT_FOUND, "Transfer was not found.", false);
+        }
+        await authorizeTransfer(principal, current, originalInvocation);
+        return currentTransferResult(current);
+      },
+      (result) => ["queued", "running"].includes(result.status),
+      waitMs,
+      signal
+    );
+  }
+
   function requestSignal(request: FastifyRequest, reply: FastifyReply): AbortSignal {
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -1268,19 +1767,32 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         false
       );
     }
+    const invocationIdentity = (value: Invocation) => ({
+      accountId: value.accountId,
+      actor: value.actor,
+      tool: value.tool,
+      args: value.args,
+      authorization: value.authorization,
+      target: value.target,
+      idempotencyKey: value.idempotencyKey,
+      executionTimeoutMs: value.executionTimeoutMs
+    });
+    const existingTransfer = await options.store.getTransferByInvocation(invocation.invocationId);
+    if (existingTransfer) {
+      if (
+        sha256(invocationIdentity(existingTransfer.invocation)) !==
+        sha256(invocationIdentity(invocation))
+      ) {
+        throw new ProtocolError("conflict", "Invocation ID has already been used.", false);
+      }
+      await authorizeTransfer(principal, existingTransfer, true);
+      return currentTransferResult(existingTransfer);
+    }
     const existing = await options.store.getDispatchByInvocation(invocation.invocationId);
     if (existing) {
-      const identity = (value: Invocation) => ({
-        accountId: value.accountId,
-        actor: value.actor,
-        tool: value.tool,
-        args: value.args,
-        authorization: value.authorization,
-        target: value.target,
-        idempotencyKey: value.idempotencyKey,
-        executionTimeoutMs: value.executionTimeoutMs
-      });
-      if (sha256(identity(existing.invocation)) !== sha256(identity(invocation))) {
+      if (
+        sha256(invocationIdentity(existing.invocation)) !== sha256(invocationIdentity(invocation))
+      ) {
         throw new ProtocolError("conflict", "Invocation ID has already been used.", false);
       }
       await authorizeTask(principal, existing, true);
@@ -1293,6 +1805,145 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         message: "agent grant does not include this control-plane capability",
         retryable: false
       });
+    }
+    if (invocation.tool === "file.transfer") {
+      if (!options.transferStore) {
+        return domainResult(invocation, "offline", {
+          code: ErrorCodes.OFFLINE,
+          message: "native transfer storage is not configured",
+          retryable: true
+        });
+      }
+      const args = FileTransferArgsSchema.parse(invocation.args);
+      if (!("nodeId" in invocation.target) || invocation.target.nodeId !== args.source.nodeId) {
+        throw new ProtocolError(
+          ErrorCodes.INVALID_REQUEST,
+          "file.transfer target must be its source node",
+          false
+        );
+      }
+      if (
+        !invocation.authorization.rootIds.includes(args.source.rootId) ||
+        !invocation.authorization.rootIds.includes(args.destination.rootId)
+      ) {
+        return domainResult(invocation, "denied", {
+          code: ErrorCodes.DENIED,
+          message: "transfer endpoints are outside this invocation authorization",
+          retryable: false
+        });
+      }
+      const [sourceNode, destinationNode] = await Promise.all([
+        options.store.getNode(args.source.nodeId),
+        options.store.getNode(args.destination.nodeId)
+      ]);
+      if (
+        !sourceNode ||
+        !destinationNode ||
+        sourceNode.accountId !== accountId ||
+        destinationNode.accountId !== accountId ||
+        !grant.nodeIds.includes(sourceNode.nodeId) ||
+        !grant.nodeIds.includes(destinationNode.nodeId)
+      ) {
+        return domainResult(invocation, "denied", {
+          code: ErrorCodes.DENIED,
+          message: "agent grant does not include both transfer devices",
+          retryable: false
+        });
+      }
+      const transferId = createId("xfr");
+      const sourceInvocation = transferChildInvocation(invocation, transferId, "source");
+      const destinationInvocation = transferChildInvocation(invocation, transferId, "destination");
+      const [sourceDecision, destinationDecision] = await Promise.all([
+        policyFor(sourceInvocation, grant, sourceNode),
+        policyFor(destinationInvocation, grant, destinationNode)
+      ]);
+      const decisions = [sourceDecision, destinationDecision];
+      const offline = decisions.find((decision) => decision.reasonCode === "node.offline");
+      const denied = decisions.find((decision) => decision.outcome === "deny");
+      if (offline || denied) {
+        const decision = offline ?? denied!;
+        return domainResult(invocation, offline ? "offline" : "denied", {
+          code: offline ? ErrorCodes.OFFLINE : ErrorCodes.DENIED,
+          message: decision.explanation,
+          retryable: !!offline,
+          details: { reasonCode: decision.reasonCode, policyDecision: decision }
+        });
+      }
+      const timestamp = now();
+      const createdAt = timestamp.toISOString();
+      const approvalDecision = decisions.find(
+        (decision) => decision.outcome === "approval_required"
+      );
+      const record: TransferRecord = {
+        transferId,
+        invocation,
+        args,
+        status: approvalDecision ? "awaiting_approval" : "queued",
+        bytesTransferred: 0,
+        createdAt,
+        updatedAt: createdAt
+      };
+      if (approvalDecision) {
+        const persisted = await options.store.createTransfer(record, [], []);
+        const approval = await options.store.putApproval({
+          approvalId: createId("apr"),
+          accountId,
+          invocation,
+          nodeId: args.destination.nodeId,
+          placementReason: "transfer_pair",
+          policyDecision: approvalDecision,
+          status: "pending",
+          createdAt,
+          expiresAt: new Date(
+            Math.min(Date.parse(invocation.expiresAt), timestamp.getTime() + 15 * 60_000)
+          ).toISOString()
+        });
+        await options.store.putAudit({
+          eventId: createId("dsp"),
+          accountId,
+          invocationId: invocation.invocationId,
+          type: "approval.requested",
+          payload: {
+            approvalId: approval.approvalId,
+            transferId: persisted.transferId,
+            sourceNodeId: args.source.nodeId,
+            destinationNodeId: args.destination.nodeId,
+            policyDecision: approvalDecision
+          },
+          createdAt
+        });
+        return domainResult(invocation, "approval_required", {
+          code: ErrorCodes.APPROVAL_REQUIRED,
+          message: approvalDecision.explanation,
+          retryable: false,
+          details: {
+            approvalId: approval.approvalId,
+            transferId: persisted.transferId,
+            expiresAt: approval.expiresAt,
+            reasonCode: approvalDecision.reasonCode,
+            policyDecision: approvalDecision
+          }
+        });
+      }
+      const dispatches = transferDispatches(
+        invocation,
+        transferId,
+        { source: sourceDecision, destination: destinationDecision },
+        createdAt
+      );
+      const transfer = await options.store.createTransfer(
+        {
+          ...record,
+          sourceDispatchId: dispatches[0].dispatchId,
+          destinationDispatchId: dispatches[1].dispatchId
+        },
+        dispatches,
+        transferAudits(invocation, transferId, dispatches, createdAt)
+      );
+      wakeNode(args.source.nodeId);
+      wakeNode(args.destination.nodeId);
+      countInvocation("queued", invocation.tool);
+      return transferResult(transfer);
     }
     if (invocation.tool === "device.list" || invocation.tool === "device.status") {
       const requestedNodeId =
@@ -1351,6 +2002,44 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
       invocation.tool === "task.cancel"
     ) {
       const jobId = (invocation.args as { jobId: string }).jobId;
+      const transferId = transferIdForJob(jobId);
+      let transfer = transferId ? await options.store.getTransferById(transferId) : undefined;
+      if (transfer) {
+        if (
+          transfer.invocation.accountId !== accountId ||
+          transfer.invocation.authorization.grantId !== grant.grantId
+        ) {
+          return domainResult(invocation, "denied", {
+            code: ErrorCodes.DENIED,
+            message: "task is not visible to this agent",
+            retryable: false
+          });
+        }
+        if (invocation.tool === "task.cancel") {
+          transfer = await requestTransferCancellation(transfer, now());
+        }
+        const result =
+          transfer && invocation.tool !== "task.cancel"
+            ? await waitTransfer(
+                transfer,
+                principal,
+                invocation.tool === "task.wait"
+                  ? (invocation.args as { waitMs: number }).waitMs
+                  : 0,
+                signal
+              )
+            : transfer
+              ? await currentTransferResult(transfer)
+              : undefined;
+        countInvocation("succeeded", invocation.tool);
+        return ResultSchema.parse({
+          schemaVersion: "0.1",
+          invocationId: invocation.invocationId,
+          attemptId: invocation.attemptId,
+          status: "succeeded",
+          output: { task: result }
+        });
+      }
       const dispatchId = dispatchIdForJob(jobId);
       let task = dispatchId ? await options.store.getDispatchById(dispatchId) : undefined;
       if (
@@ -1480,6 +2169,10 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
   ) {
     const result = await invoke(invocation, principal, signal);
     if (!result.jobId || !["queued", "running"].includes(result.status) || !waitMs) return result;
+    const transfer = await options.store.getTransferByInvocation(result.invocationId);
+    if (transfer) {
+      return waitTransfer(transfer, principal, WaitMsSchema.parse(waitMs), signal, true);
+    }
     const task = await options.store.getDispatchByInvocation(result.invocationId);
     return task ? waitTask(task, principal, WaitMsSchema.parse(waitMs), signal, true) : result;
   }
@@ -1504,12 +2197,39 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     );
   }
 
+  function visibleTransfer(request: FastifyRequest, transfer: TransferRecord | undefined) {
+    const principal = principals.get(request)!;
+    return (
+      !!transfer &&
+      transfer.invocation.accountId === principal.accountId &&
+      (principal.kind === "session" ||
+        principal.kind === "pat" ||
+        transfer.invocation.authorization.grantId === principal.grantId)
+    );
+  }
+
   app.get(
     "/api/v1/invocations/:invocationId",
     { preHandler: requireAuthenticated },
     async (request, reply) => {
       const { invocationId } = z.object({ invocationId: InvocationIdSchema }).parse(request.params);
       const principal = principals.get(request)!;
+      const transfer = await options.store.getTransferByInvocation(invocationId);
+      if (transfer) {
+        if (!visibleTransfer(request, transfer)) {
+          return apiError(reply, 404, ErrorCodes.NOT_FOUND, "invocation was not found");
+        }
+        if (transfer.status === "awaiting_approval") {
+          return currentTransferResult(transfer);
+        }
+        return waitTransfer(
+          transfer,
+          principal,
+          waitQuery.parse(request.query).waitMs,
+          requestSignal(request, reply),
+          true
+        );
+      }
       const dispatch = await options.store.getDispatchByInvocation(invocationId);
       if (dispatch) {
         if (!visibleTask(request, dispatch)) {
@@ -1561,6 +2281,19 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
 
   app.get("/api/v1/tasks/:jobId", { preHandler: requireAuthenticated }, async (request, reply) => {
     const { jobId } = z.object({ jobId: z.string() }).parse(request.params);
+    const transferId = transferIdForJob(jobId);
+    const transfer = transferId ? await options.store.getTransferById(transferId) : undefined;
+    if (transfer) {
+      if (!visibleTransfer(request, transfer)) {
+        return apiError(reply, 404, ErrorCodes.NOT_FOUND, "task was not found");
+      }
+      return waitTransfer(
+        transfer,
+        principals.get(request)!,
+        waitQuery.parse(request.query).waitMs,
+        requestSignal(request, reply)
+      );
+    }
     const dispatchId = dispatchIdForJob(jobId);
     const dispatch = dispatchId ? await options.store.getDispatchById(dispatchId) : undefined;
     if (!dispatch || !visibleTask(request, dispatch)) {
@@ -1579,6 +2312,34 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
     { preHandler: requireAuthenticated },
     async (request, reply) => {
       const { jobId } = z.object({ jobId: z.string() }).parse(request.params);
+      const transferId = transferIdForJob(jobId);
+      const transfer = transferId ? await options.store.getTransferById(transferId) : undefined;
+      if (transfer) {
+        if (!visibleTransfer(request, transfer)) {
+          return apiError(reply, 404, ErrorCodes.NOT_FOUND, "task was not found");
+        }
+        const actor = principals.get(request)!;
+        if (
+          actor.kind === "agent" &&
+          !(await options.store.getGrant(actor.grantId))?.allowedTools.includes("task.cancel")
+        ) {
+          return apiError(reply, 403, ErrorCodes.DENIED, "Task cancellation is not granted.");
+        }
+        const timestamp = now();
+        const cancelled = await requestTransferCancellation(transfer, timestamp);
+        if (!cancelled) {
+          return apiError(reply, 404, ErrorCodes.NOT_FOUND, "task was not found");
+        }
+        await options.store.putAudit({
+          eventId: createId("dsp"),
+          accountId: transfer.invocation.accountId,
+          invocationId: transfer.invocation.invocationId,
+          type: "task.cancel_requested",
+          payload: { transferId: transfer.transferId, status: cancelled.status },
+          createdAt: timestamp.toISOString()
+        });
+        return currentTransferResult(cancelled);
+      }
       const dispatchId = dispatchIdForJob(jobId);
       const current = dispatchId ? await options.store.getDispatchById(dispatchId) : undefined;
       if (!current || !visibleTask(request, current)) {
@@ -1665,6 +2426,10 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
         return apiError(reply, 404, ErrorCodes.NOT_FOUND, "approval was not found");
       }
       if (approval.status === "approved") {
+        const transfer = await options.store.getTransferByInvocation(
+          approval.invocation.invocationId
+        );
+        if (transfer) return transferResult(transfer);
         const existing = await options.store.getDispatchByInvocation(
           approval.invocation.invocationId
         );
@@ -1690,7 +2455,98 @@ export async function createControlPlane(options: ControlPlaneOptions): Promise<
           payload: { approvalId, nodeId: approval.nodeId },
           createdAt: timestamp.toISOString()
         });
+        const transfer = await options.store.getTransferByInvocation(
+          approval.invocation.invocationId
+        );
+        if (transfer) {
+          await options.store.denyTransfer(transfer.transferId, timestamp);
+          taskWaitHub.notify(transfer.transferId);
+        }
         return { approval: resolved };
+      }
+      const pendingTransfer = await options.store.getTransferByInvocation(
+        approval.invocation.invocationId
+      );
+      if (pendingTransfer) {
+        const grant = await options.store.getGrant(
+          pendingTransfer.invocation.authorization.grantId
+        );
+        const [sourceNode, destinationNode] = await Promise.all([
+          options.store.getNode(pendingTransfer.args.source.nodeId),
+          options.store.getNode(pendingTransfer.args.destination.nodeId)
+        ]);
+        if (!grant || grant.revokedAt || !sourceNode || !destinationNode) {
+          return apiError(
+            reply,
+            409,
+            ErrorCodes.DENIED,
+            "transfer device or grant was revoked before approval"
+          );
+        }
+        const sourceInvocation = transferChildInvocation(
+          pendingTransfer.invocation,
+          pendingTransfer.transferId,
+          "source"
+        );
+        const destinationInvocation = transferChildInvocation(
+          pendingTransfer.invocation,
+          pendingTransfer.transferId,
+          "destination"
+        );
+        const [sourceDecision, destinationDecision] = await Promise.all([
+          policyFor(sourceInvocation, grant, sourceNode),
+          policyFor(destinationInvocation, grant, destinationNode)
+        ]);
+        if ([sourceDecision, destinationDecision].some((current) => current.outcome === "deny")) {
+          return apiError(
+            reply,
+            409,
+            ErrorCodes.DENIED,
+            "transfer authorization changed before approval"
+          );
+        }
+        const unsignedDecision = {
+          outcome: "allow" as const,
+          reasonCode: "approval.granted",
+          explanation: "An owner approved this transfer.",
+          evaluatedLayers: approval.policyDecision.evaluatedLayers,
+          profile: approval.policyDecision.profile
+        };
+        const approvedDecision = {
+          ...unsignedDecision,
+          decisionHash: sha256(unsignedDecision)
+        };
+        const createdAt = timestamp.toISOString();
+        const dispatches = transferDispatches(
+          pendingTransfer.invocation,
+          pendingTransfer.transferId,
+          { source: approvedDecision, destination: approvedDecision },
+          createdAt
+        );
+        const started = await options.store.approveAndStartTransfer(
+          approvalId,
+          pendingTransfer.transferId,
+          dispatches,
+          transferAudits(
+            pendingTransfer.invocation,
+            pendingTransfer.transferId,
+            dispatches,
+            createdAt
+          ),
+          timestamp
+        );
+        if (!started) {
+          return apiError(
+            reply,
+            409,
+            ErrorCodes.CONFLICT,
+            "Approval was already resolved or expired."
+          );
+        }
+        wakeNode(started.args.source.nodeId);
+        wakeNode(started.args.destination.nodeId);
+        taskWaitHub.notify(started.transferId);
+        return transferResult(started);
       }
       const node = await options.store.getNode(approval.nodeId);
       const grant = await options.store.getGrant(approval.invocation.authorization.grantId);

@@ -54,6 +54,7 @@
             "file.write",
             "file.edit",
             "file.patch",
+            "file.transfer",
             "shell.exec",
             "command.template.list",
             "command.template.run",

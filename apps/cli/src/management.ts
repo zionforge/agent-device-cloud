@@ -28,7 +28,7 @@ const readTools = [
   "task.result",
   "task.wait"
 ] as ToolId[];
-const writeTools = ["file.write", "file.edit", "file.patch"] as ToolId[];
+const writeTools = ["file.write", "file.edit", "file.patch", "file.transfer"] as ToolId[];
 const runTools = ["shell.exec", "command.template.run", "test.run", "task.cancel"] as ToolId[];
 const toolPresets: Record<string, ToolId[]> = {
   read: readTools,

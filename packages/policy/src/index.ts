@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   AbsolutePathSchema,
   ExecutionTools,
+  FileTransferArgsSchema,
   PolicyDecisionSchema,
   ReadOnlyTools,
   ToolIdSchema,
@@ -122,10 +123,24 @@ function decision(
   return PolicyDecisionSchema.parse({ ...unsigned, decisionHash: sha256(unsigned) });
 }
 
-function legacyInvocationRootId(invocation: Invocation): string | undefined {
+function invocationRoot(
+  invocation: Invocation
+): { rootId: string; requiresWrite: boolean } | undefined {
   if (!isBuiltinTool(invocation.tool)) return undefined;
+  if (invocation.tool === "file.transfer" && "nodeId" in invocation.target) {
+    const transfer = FileTransferArgsSchema.parse(invocation.args);
+    if (transfer.source.nodeId === invocation.target.nodeId) {
+      return { rootId: transfer.source.rootId, requiresWrite: false };
+    }
+    if (transfer.destination.nodeId === invocation.target.nodeId) {
+      return { rootId: transfer.destination.rootId, requiresWrite: true };
+    }
+    return undefined;
+  }
   const args = invocation.args as Record<string, unknown>;
-  return typeof args.rootId === "string" ? args.rootId : undefined;
+  return typeof args.rootId === "string"
+    ? { rootId: args.rootId, requiresWrite: isSideEffectTool(invocation.tool) }
+    : undefined;
 }
 
 export function evaluatePolicy(rawContext: PolicyContext, invocation: Invocation): PolicyDecision {
@@ -186,7 +201,8 @@ export function evaluatePolicy(rawContext: PolicyContext, invocation: Invocation
       "The device does not advertise a root containing the requested absolute path."
     );
   }
-  const rootId = legacyInvocationRootId(invocation) ?? matchedRoot?.rootId;
+  const invocationRootAccess = invocationRoot(invocation);
+  const rootId = invocationRootAccess?.rootId ?? matchedRoot?.rootId;
   if (rootId) {
     if (!invocation.authorization.rootIds.includes(rootId)) {
       return decision(
@@ -213,7 +229,7 @@ export function evaluatePolicy(rawContext: PolicyContext, invocation: Invocation
         "The device does not advertise the requested root."
       );
     }
-    if (isSideEffectTool(tool) && !root.writable) {
+    if ((invocationRootAccess?.requiresWrite ?? isSideEffectTool(tool)) && !root.writable) {
       return decision(
         context,
         "deny",

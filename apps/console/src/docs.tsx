@@ -115,6 +115,7 @@ export const documentedTools = [
   "file.write",
   "file.edit",
   "file.patch",
+  "file.transfer",
   "shell.exec",
   "command.template.list",
   "command.template.run",
@@ -1094,7 +1095,7 @@ function ToolReference() {
       purpose: "List, read and search files inside authorized folders."
     },
     {
-      tools: ["file.write", "file.edit", "file.patch"],
+      tools: ["file.write", "file.edit", "file.patch", "file.transfer"],
       risk: "Write",
       purpose: "Create, replace, edit or patch files atomically."
     },
@@ -1152,6 +1153,26 @@ function ToolReference() {
           "Devices may also register namespaced MCP Provider tools. Their original input schema is exposed to the Agent, they default to execution risk, and they appear only after explicit authorization."
         )}
       </p>
+      <Section id="file-transfer" title={copy("Transfer between devices", "在设备之间传输文件")}>
+        <p>
+          {copy(
+            "file.transfer copies one regular file between two authorized desktop devices. The source folder may be read-only; the destination folder must be writable. ADC relays verified binary chunks through its own persistent transfer directory, requires independent approval when write approval is enabled, and never requires TOS, S3 or another object-storage service.",
+            "file.transfer 可在两台已授权桌面设备之间复制单个普通文件。源目录可以只读，目标目录必须可写。ADC 通过自身的持久化传输目录中继并校验二进制分块；启用写入审批时仍需独立审批，且不依赖 TOS、S3 或其他对象存储服务。"
+          )}
+        </p>
+        <CodeBlock label="CLI">
+          {`adc transfer create \\
+  --source-node node_source --source-root root_source --source-path models/model.bin \\
+  --destination-node node_target --destination-root root_target --destination-path cache/model.bin \\
+  --idempotency-key model-copy-1 --wait 4000 --json`}
+        </CodeBlock>
+        <p>
+          {copy(
+            "The command returns one transfer job. Continue with adc transfer wait, status or cancel using its transferId or jobId. Version 0.1 never overwrites an existing destination and does not copy directories.",
+            "该命令返回一个传输任务。使用其 transferId 或 jobId 继续执行 adc transfer wait、status 或 cancel。0.1 版本不会覆盖已有目标文件，也不支持复制目录。"
+          )}
+        </p>
+      </Section>
       <Section id="task-wait" title={copy("Wait for an existing task", "等待已有任务")}>
         <p>
           {copy(

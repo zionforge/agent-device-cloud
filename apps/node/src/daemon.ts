@@ -7,6 +7,7 @@ import {
 } from "@adc/client/node";
 import {
   CapabilitySchema,
+  FileTransferArgsSchema,
   absolutePathForToolArgs,
   rootForAbsolutePath,
   type CapabilityAdvertisement,
@@ -17,6 +18,7 @@ import { ToolRuntime, type CommandTemplate, type LocalRoot } from "@adc/tool-run
 import type { McpProviderConfig } from "./config.ts";
 import { McpProviderManager } from "./mcp-providers.ts";
 import { nodePlatform } from "./platform.ts";
+import { NodeTransferRuntime } from "./transfer.ts";
 import { WakeLatch, WebSocketWakeSource, type NodeWakeSource } from "./wake.ts";
 
 const DEFAULT_MAX_CONCURRENCY = 6;
@@ -28,6 +30,7 @@ const DESKTOP_TOOLS = [
   "file.write",
   "file.edit",
   "file.patch",
+  "file.transfer",
   "shell.exec",
   "command.template.list",
   "command.template.run",
@@ -79,6 +82,7 @@ export class NodeDaemon {
   readonly api: NodeApiClient;
   readonly runtime: ToolRuntime;
   readonly providers: McpProviderManager;
+  readonly transfers: NodeTransferRuntime;
   private readonly shutdown = new AbortController();
   private readonly wakeSource: NodeWakeSource;
   private access: LocalAccess;
@@ -128,6 +132,7 @@ export class NodeDaemon {
       externalExecutor: this.providers.execute,
       ...(options.templates ? { templates: options.templates } : {})
     });
+    this.transfers = new NodeTransferRuntime(options.nodeId, this.api, options.stateDirectory);
   }
 
   private reloadAccess(): Promise<boolean> {
@@ -178,11 +183,12 @@ export class NodeDaemon {
           name,
           version: "0.1.0",
           risk:
-            name.startsWith("file.") && !["file.write", "file.edit", "file.patch"].includes(name)
+            name.startsWith("file.") &&
+            !["file.write", "file.edit", "file.patch", "file.transfer"].includes(name)
               ? ("read" as const)
               : name === "command.template.list"
                 ? ("read" as const)
-                : name === "file.write" || name === "file.edit" || name === "file.patch"
+                : ["file.write", "file.edit", "file.patch", "file.transfer"].includes(name)
                   ? ("write" as const)
                   : ("execute" as const),
           sandboxProfiles: [
@@ -329,6 +335,14 @@ export class NodeDaemon {
     const absolutePath = absolutePathForToolArgs(dispatch.invocation.tool, invocationArgs);
     const rootId =
       (typeof invocationArgs.rootId === "string" ? invocationArgs.rootId : undefined) ??
+      (dispatch.invocation.tool === "file.transfer"
+        ? (() => {
+            const transfer = FileTransferArgsSchema.parse(dispatch.invocation.args);
+            return transfer.source.nodeId === this.options.nodeId
+              ? transfer.source.rootId
+              : transfer.destination.rootId;
+          })()
+        : undefined) ??
       (absolutePath ? rootForAbsolutePath(absolutePath, accessAtStart.roots)?.rootId : undefined);
     let reloadInFlight = false;
     const configTimer = this.options.loadAccess
@@ -357,11 +371,22 @@ export class NodeDaemon {
       : undefined;
     configTimer?.unref();
     try {
-      const result = await this.runtime.execute(
-        dispatch.invocation,
-        dispatch.policyDecision,
-        cancellation.signal
-      );
+      const result =
+        dispatch.invocation.tool === "file.transfer"
+          ? await this.transfers.execute(
+              dispatch.invocation,
+              dispatch.policyDecision,
+              accessAtStart.roots.map((root) => ({
+                ...root,
+                allowSensitivePaths: accessAtStart.accessMode === "full"
+              })),
+              cancellation.signal
+            )
+          : await this.runtime.execute(
+              dispatch.invocation,
+              dispatch.policyDecision,
+              cancellation.signal
+            );
       for (const artifactId of result.receipt?.artifactRefs ?? []) {
         const data = await this.runtime.readArtifact(artifactId);
         await this.api.uploadArtifact({

@@ -5,7 +5,7 @@
       "$ref": "#/$defs/__schema0"
     },
     {
-      "$ref": "#/$defs/__schema59"
+      "$ref": "#/$defs/__schema62"
     }
   ],
   "$defs": {
@@ -2423,6 +2423,90 @@
             },
             "tool": {
               "type": "string",
+              "const": "file.transfer"
+            },
+            "args": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "$ref": "#/$defs/__schema55"
+                },
+                "destination": {
+                  "$ref": "#/$defs/__schema55"
+                },
+                "overwrite": {
+                  "$ref": "#/$defs/__schema56"
+                },
+                "chunkSizeBytes": {
+                  "$ref": "#/$defs/__schema57"
+                }
+              },
+              "required": [
+                "source",
+                "destination",
+                "overwrite",
+                "chunkSizeBytes"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "schemaVersion",
+            "invocationId",
+            "attemptId",
+            "accountId",
+            "actor",
+            "target",
+            "authorization",
+            "issuedAt",
+            "expiresAt",
+            "metadata",
+            "tool",
+            "args"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "schemaVersion": {
+              "$ref": "#/$defs/__schema1"
+            },
+            "invocationId": {
+              "$ref": "#/$defs/__schema2"
+            },
+            "attemptId": {
+              "$ref": "#/$defs/__schema3"
+            },
+            "accountId": {
+              "$ref": "#/$defs/__schema4"
+            },
+            "actor": {
+              "$ref": "#/$defs/__schema5"
+            },
+            "target": {
+              "$ref": "#/$defs/__schema6"
+            },
+            "authorization": {
+              "$ref": "#/$defs/__schema9"
+            },
+            "issuedAt": {
+              "$ref": "#/$defs/__schema11"
+            },
+            "expiresAt": {
+              "$ref": "#/$defs/__schema12"
+            },
+            "executionTimeoutMs": {
+              "$ref": "#/$defs/__schema13"
+            },
+            "idempotencyKey": {
+              "$ref": "#/$defs/__schema14"
+            },
+            "metadata": {
+              "$ref": "#/$defs/__schema15"
+            },
+            "tool": {
+              "type": "string",
               "const": "shell.exec"
             },
             "args": {
@@ -2437,13 +2521,13 @@
                       "$ref": "#/$defs/__schema39"
                     },
                     "command": {
-                      "$ref": "#/$defs/__schema55"
+                      "$ref": "#/$defs/__schema58"
                     },
                     "timeoutMs": {
-                      "$ref": "#/$defs/__schema56"
+                      "$ref": "#/$defs/__schema59"
                     },
                     "env": {
-                      "$ref": "#/$defs/__schema57"
+                      "$ref": "#/$defs/__schema60"
                     }
                   },
                   "required": [
@@ -2462,13 +2546,13 @@
                       "$ref": "#/$defs/__schema42"
                     },
                     "command": {
-                      "$ref": "#/$defs/__schema55"
+                      "$ref": "#/$defs/__schema58"
                     },
                     "timeoutMs": {
-                      "$ref": "#/$defs/__schema56"
+                      "$ref": "#/$defs/__schema59"
                     },
                     "env": {
-                      "$ref": "#/$defs/__schema57"
+                      "$ref": "#/$defs/__schema60"
                     }
                   },
                   "required": [
@@ -2862,7 +2946,7 @@
               "type": "object",
               "properties": {
                 "jobId": {
-                  "$ref": "#/$defs/__schema58"
+                  "$ref": "#/$defs/__schema61"
                 }
               },
               "required": [
@@ -2934,7 +3018,7 @@
               "type": "object",
               "properties": {
                 "jobId": {
-                  "$ref": "#/$defs/__schema58"
+                  "$ref": "#/$defs/__schema61"
                 }
               },
               "required": [
@@ -3006,7 +3090,7 @@
               "type": "object",
               "properties": {
                 "jobId": {
-                  "$ref": "#/$defs/__schema58"
+                  "$ref": "#/$defs/__schema61"
                 },
                 "waitMs": {
                   "default": 4000,
@@ -3085,7 +3169,7 @@
               "type": "object",
               "properties": {
                 "jobId": {
-                  "$ref": "#/$defs/__schema58"
+                  "$ref": "#/$defs/__schema61"
                 }
               },
               "required": [
@@ -3526,17 +3610,48 @@
       "maxLength": 10485760
     },
     "__schema55": {
+      "type": "object",
+      "properties": {
+        "nodeId": {
+          "$ref": "#/$defs/__schema7"
+        },
+        "rootId": {
+          "$ref": "#/$defs/__schema10"
+        },
+        "path": {
+          "$ref": "#/$defs/__schema43"
+        }
+      },
+      "required": [
+        "nodeId",
+        "rootId",
+        "path"
+      ],
+      "additionalProperties": false
+    },
+    "__schema56": {
+      "default": "never",
+      "type": "string",
+      "const": "never"
+    },
+    "__schema57": {
+      "default": 8388608,
+      "type": "integer",
+      "minimum": 1048576,
+      "maximum": 33554432
+    },
+    "__schema58": {
       "type": "string",
       "minLength": 1,
       "maxLength": 32768
     },
-    "__schema56": {
+    "__schema59": {
       "default": 120000,
       "type": "integer",
       "minimum": 100,
       "maximum": 1800000
     },
-    "__schema57": {
+    "__schema60": {
       "default": {},
       "type": "object",
       "propertyNames": {
@@ -3548,11 +3663,11 @@
         "maxLength": 8192
       }
     },
-    "__schema58": {
+    "__schema61": {
       "type": "string",
       "pattern": "^job_[a-z0-9][a-z0-9_-]{2,127}$"
     },
-    "__schema59": {
+    "__schema62": {
       "type": "object",
       "properties": {
         "schemaVersion": {

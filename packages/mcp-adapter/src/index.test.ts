@@ -145,6 +145,70 @@ describe("McpInvocationAdapter", () => {
     }
   });
 
+  it("exposes native transfer as one control-plane tool without a separate target", async () => {
+    let captured: Invocation | undefined;
+    const server = createMcpServer({
+      client: {
+        invoke: async (invocation) => {
+          captured = invocation;
+          return ResultSchema.parse({
+            schemaVersion: "0.1",
+            invocationId: invocation.invocationId,
+            attemptId: invocation.attemptId,
+            status: "queued",
+            jobId: "job_xfr_example"
+          });
+        }
+      },
+      context: {
+        accountId: "acct_primary",
+        actorId: "actor_testagent",
+        grantId: "grant_example",
+        nodeIds: ["node_source", "node_destination"],
+        rootIds: ["root_source", "root_destination"],
+        toolNodeIds: {
+          "file.transfer": ["node_source", "node_destination"]
+        }
+      },
+      allowedTools: ["file.transfer"]
+    });
+    const client = new Client({ name: "transfer-tool-test", version: "0.1.0" });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    try {
+      const tool = (await client.listTools()).tools[0]!;
+      expect(tool.name).toBe("file.transfer");
+      expect(tool.inputSchema.required).toEqual(["args", "idempotencyKey"]);
+      await client.callTool({
+        name: "file.transfer",
+        arguments: {
+          args: {
+            source: {
+              nodeId: "node_source",
+              rootId: "root_source",
+              path: "model.bin"
+            },
+            destination: {
+              nodeId: "node_destination",
+              rootId: "root_destination",
+              path: "model.bin"
+            }
+          },
+          idempotencyKey: "mcp-native-transfer"
+        }
+      });
+      expect(captured).toMatchObject({
+        tool: "file.transfer",
+        target: { nodeId: "node_source" },
+        authorization: { rootIds: ["root_source", "root_destination"] }
+      });
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it("describes the concrete shell dialect for every target device", async () => {
     const server = createMcpServer({
       client: {

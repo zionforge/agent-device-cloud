@@ -7,6 +7,7 @@ import { createAuthentication } from "./auth.ts";
 import { createAccessService } from "./access.ts";
 import { parseCorsOrigins } from "./cors.ts";
 import { LocalContentAddressedAssetStore } from "./asset-store.ts";
+import { LocalTransferBlobStore } from "./transfer-store.ts";
 
 const databaseURL = process.env.DATABASE_URL;
 const secret = process.env.ADC_AUTH_SECRET;
@@ -93,12 +94,21 @@ const corsOrigins = parseCorsOrigins(process.env.ADC_CORS_ORIGINS);
 const assetStore = process.env.ADC_ASSET_DIR
   ? new LocalContentAddressedAssetStore(process.env.ADC_ASSET_DIR)
   : undefined;
+const transferStore = new LocalTransferBlobStore(
+  process.env.ADC_TRANSFER_DIR ?? "./data/transfers"
+);
+const maxTransferBytes = Number(process.env.ADC_TRANSFER_MAX_BYTES ?? 100 * 1024 * 1024 * 1024);
+if (!Number.isSafeInteger(maxTransferBytes) || maxTransferBytes < 1) {
+  throw new Error("ADC_TRANSFER_MAX_BYTES must be a positive safe integer.");
+}
 const app = await createControlPlane({
   store,
   access: createAccessService(authentication, new IdentityStore(store.pool)),
   logger: true,
   consoleDirectory,
   ...(assetStore ? { assetStore } : {}),
+  transferStore,
+  maxTransferBytes,
   ...(corsOrigins ? { corsOrigins } : {}),
   ...(analyticsScriptUrl && analyticsDomain
     ? {

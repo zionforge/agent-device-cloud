@@ -55,7 +55,7 @@ const readTools = [
   "task.result",
   "task.wait"
 ];
-const fileTools = ["file.write", "file.edit", "file.patch"];
+const fileTools = ["file.write", "file.edit", "file.patch", "file.transfer"];
 const runTools = ["shell.exec", "command.template.run", "test.run", "task.cancel"];
 const levels: [string, Message, string[]][] = [
   ["read", "Read only", readTools],

@@ -41,6 +41,7 @@ export const DispatchIdSchema = z.string().regex(/^dsp_[a-z0-9][a-z0-9_-]{2,127}
 export const ApprovalIdSchema = z.string().regex(/^apr_[a-z0-9][a-z0-9_-]{2,127}$/);
 export const ReceiptIdSchema = z.string().regex(/^rcpt_[a-z0-9][a-z0-9_-]{2,127}$/);
 export const JobIdSchema = z.string().regex(/^job_[a-z0-9][a-z0-9_-]{2,127}$/);
+export const TransferIdSchema = z.string().regex(/^xfr_[a-z0-9][a-z0-9_-]{2,127}$/);
 export const ArtifactIdSchema = z.string().regex(/^artifact_[a-f0-9]{32}\.(?:log|png)$/);
 export const NodePlatformSchema = z.enum(["darwin", "linux", "win32", "android"]);
 export type NodePlatform = z.infer<typeof NodePlatformSchema>;
@@ -174,6 +175,33 @@ const FilePatchOptions = {
     .min(1)
     .max(10 * 1024 * 1024)
 } as const;
+export const TransferEndpointSchema = z
+  .object({
+    nodeId: NodeIdSchema,
+    rootId: RootIdSchema,
+    path: NonEmptyResourcePathSchema
+  })
+  .strict();
+export type TransferEndpoint = z.infer<typeof TransferEndpointSchema>;
+
+export const FileTransferArgsSchema = z
+  .object({
+    source: TransferEndpointSchema,
+    destination: TransferEndpointSchema,
+    overwrite: z.literal("never").default("never"),
+    chunkSizeBytes: z
+      .number()
+      .int()
+      .min(1024 * 1024)
+      .max(32 * 1024 * 1024)
+      .default(8 * 1024 * 1024)
+  })
+  .strict()
+  .refine(
+    (value) => value.source.nodeId !== value.destination.nodeId,
+    "source and destination nodes must be different"
+  );
+export type FileTransferArgs = z.infer<typeof FileTransferArgsSchema>;
 const ShellOptions = {
   command: z.string().min(1).max(32_768),
   timeoutMs: z
@@ -417,6 +445,7 @@ export const ToolArgsSchemas = {
     z.object({ ...LegacyRootFileShape, ...FilePatchOptions }).strict(),
     z.object({ ...AbsoluteFileShape, ...FilePatchOptions }).strict()
   ]),
+  "file.transfer": FileTransferArgsSchema,
   "shell.exec": z.union([
     z.object({ rootId: RootIdSchema, cwd: ResourcePathSchema, ...ShellOptions }).strict(),
     z.object({ cwd: AbsolutePathSchema, ...ShellOptions }).strict()
@@ -581,6 +610,7 @@ export const ReadOnlyTools: ReadonlySet<ToolName> = new Set([
 export const ControlPlaneTools: ReadonlySet<ToolName> = new Set([
   "device.list",
   "device.status",
+  "file.transfer",
   "task.status",
   "task.result",
   "task.wait",
@@ -612,6 +642,7 @@ export const SideEffectTools: ReadonlySet<ToolName> = new Set([
   "file.write",
   "file.edit",
   "file.patch",
+  "file.transfer",
   "shell.exec",
   "command.template.run",
   "test.run",
@@ -941,6 +972,7 @@ export function createId(
     | "apr"
     | "rcpt"
     | "job"
+    | "xfr"
     | "grant"
 ): string {
   const timestamp = Date.now().toString(36).padStart(9, "0");

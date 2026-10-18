@@ -112,6 +112,19 @@ describe("NodeDaemon access reload", () => {
     expect(daemon.capability().roots[0]).not.toHaveProperty("path");
   });
 
+  it("advertises native transfer as a write-risk capability", () => {
+    const daemon = new NodeDaemon({
+      controlPlaneUrl: "http://localhost:8787",
+      nodeId: "node_example",
+      privateKey: generateNodeKeyPair().privateKey,
+      roots: [root],
+      stateDirectory: "/unused/state"
+    });
+    expect(daemon.capability().tools).toContainEqual(
+      expect.objectContaining({ name: "file.transfer", risk: "write" })
+    );
+  });
+
   it("advertises the immutable installed build ID", () => {
     const buildId = `sha256:${"b".repeat(64)}`;
     const daemon = new NodeDaemon({
