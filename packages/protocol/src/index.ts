@@ -184,9 +184,18 @@ export const TransferEndpointSchema = z
   .strict();
 export type TransferEndpoint = z.infer<typeof TransferEndpointSchema>;
 
+export const AgentTransferSourceSchema = z
+  .object({
+    kind: z.literal("agent"),
+    path: NonEmptyResourcePathSchema,
+    byteSize: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    contentSha256: z.string().regex(/^sha256:[a-f0-9]{64}$/)
+  })
+  .strict();
+
 export const FileTransferArgsSchema = z
   .object({
-    source: TransferEndpointSchema,
+    source: z.union([TransferEndpointSchema, AgentTransferSourceSchema]),
     destination: TransferEndpointSchema,
     overwrite: z.literal("never").default("never"),
     chunkSizeBytes: z
@@ -198,7 +207,7 @@ export const FileTransferArgsSchema = z
   })
   .strict()
   .refine(
-    (value) => value.source.nodeId !== value.destination.nodeId,
+    (value) => !("nodeId" in value.source) || value.source.nodeId !== value.destination.nodeId,
     "source and destination nodes must be different"
   );
 export type FileTransferArgs = z.infer<typeof FileTransferArgsSchema>;
@@ -916,6 +925,7 @@ export const CapabilitySchema = z
     platform: NodePlatformSchema,
     accessMode: z.enum(["none", "selected", "home", "full"]).optional(),
     nodeVersion: z.string().min(1).max(64),
+    transferDataPlanes: z.array(z.enum(["local", "object"])).optional(),
     buildId: z
       .string()
       .regex(/^sha256:[a-f0-9]{64}$/)

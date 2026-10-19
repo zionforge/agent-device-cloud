@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   CapabilitySchema,
   ErrorSchema,
@@ -62,6 +62,7 @@ export class NodeApiClient {
       contentType?: string;
       timeoutMs?: number;
       headers?: Record<string, string>;
+      signal?: AbortSignal | undefined;
     }
   ): Promise<Response> {
     if (!this.nodeId) {
@@ -79,7 +80,7 @@ export class NodeApiClient {
     });
     return this.fetcher(`${this.baseUrl}${path}`, {
       method,
-      signal: AbortSignal.timeout(input.timeoutMs ?? 15_000),
+      signal: transferSignal(input.signal, input.timeoutMs ?? 15_000),
       redirect: "error",
       headers: {
         ...(input.body === undefined
@@ -106,8 +107,8 @@ export class NodeApiClient {
     });
   }
 
-  private async signedRequest(path: string, body: unknown): Promise<any> {
-    const response = await this.signedFetch(path, { body });
+  private async signedRequest(path: string, body: unknown, signal?: AbortSignal): Promise<any> {
+    const response = await this.signedFetch(path, { body, signal });
     const responseBody = await response.json().catch(() => ({}));
     if (!response.ok) {
       const parsed = ErrorSchema.safeParse((responseBody as any)?.error);
@@ -193,11 +194,13 @@ export class NodeApiClient {
 
   async prepareTransfer(
     transferId: string,
-    input: { byteSize: number; chunkCount: number }
+    input: { byteSize: number; chunkCount: number },
+    signal?: AbortSignal
   ): Promise<any> {
     return this.signedRequest(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/prepare`,
-      input
+      input,
+      signal
     );
   }
 
@@ -205,13 +208,50 @@ export class NodeApiClient {
     transferId: string,
     index: number,
     data: Buffer,
-    sha256: string
+    sha256: string,
+    signal?: AbortSignal
   ): Promise<any> {
+    if (`sha256:${createHash("sha256").update(data).digest("hex")}` !== sha256) {
+      throw new Error("transfer chunk digest mismatch");
+    }
+    const metadata = await this.transferMetadata(transferId, signal);
+    if (metadata.dataPlane === "object") {
+      const ticketPath = `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/chunks/${index}/ticket`;
+      const ticketBody = {
+        operation: "upload",
+        sha256,
+        contentMd5: createHash("md5").update(data).digest("base64")
+      };
+      const ticket = await this.signedRequest(ticketPath, ticketBody, signal);
+      if (ticket.alreadyUploaded) return { accepted: true };
+      validateTransferTicket(ticket);
+      const uploaded = await this.fetcher(ticket.url, {
+        method: "PUT",
+        headers: ticket.headers,
+        body: data as BodyInit,
+        redirect: "error",
+        signal: transferSignal(signal, 120_000)
+      });
+      // A concurrent retry may have committed the same immutable chunk.
+      if (uploaded.status === 409) {
+        const retry = await this.signedRequest(ticketPath, ticketBody, signal);
+        if (retry.alreadyUploaded) return { accepted: true };
+      }
+      if (!uploaded.ok) {
+        throw new AdcClientError(uploaded.status, {
+          code: "execution_failed",
+          message: `object upload returned HTTP ${uploaded.status}`,
+          retryable: uploaded.status >= 500
+        });
+      }
+      return { accepted: true };
+    }
     const response = await this.signedFetch(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/chunks/${index}`,
       {
         method: "PUT",
         body: data,
+        signal,
         timeoutMs: 120_000,
         headers: { "x-adc-content-sha256": sha256 }
       }
@@ -219,21 +259,72 @@ export class NodeApiClient {
     return this.parseSignedResponse(response);
   }
 
-  async transferMetadata(transferId: string): Promise<any> {
+  async transferMetadata(transferId: string, signal?: AbortSignal): Promise<any> {
     const response = await this.signedFetch(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}`,
-      { method: "GET" }
+      { method: "GET", signal }
     );
     return this.parseSignedResponse(response);
   }
 
   async downloadTransferChunk(
     transferId: string,
-    index: number
+    index: number,
+    signal?: AbortSignal
   ): Promise<{ data: Buffer; sha256: string }> {
+    const metadata = await this.transferMetadata(transferId, signal);
+    if (metadata.dataPlane === "object") {
+      const ticket = await this.signedRequest(
+        `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/chunks/${index}/ticket`,
+        { operation: "download" },
+        signal
+      );
+      validateTransferTicket(ticket);
+      if (
+        !Number.isSafeInteger(ticket.bytes) ||
+        ticket.bytes < 1 ||
+        ticket.bytes > 32 * 1024 * 1024
+      ) {
+        throw new Error("invalid object transfer size");
+      }
+      const downloaded = await this.fetcher(ticket.url, {
+        method: "GET",
+        headers: ticket.headers,
+        redirect: "error",
+        signal: transferSignal(signal, 120_000)
+      });
+      if (!downloaded.ok) {
+        throw new AdcClientError(downloaded.status, {
+          code: downloaded.status === 404 ? "not_found" : "execution_failed",
+          message: `object download returned HTTP ${downloaded.status}`,
+          retryable: downloaded.status >= 500 || downloaded.status === 404
+        });
+      }
+      if (!downloaded.body) throw new Error("empty object response");
+      const reader = downloaded.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          bytes += next.value.byteLength;
+          if (bytes > ticket.bytes) throw new Error("object response exceeds expected size");
+          chunks.push(next.value);
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
+      }
+      if (bytes !== ticket.bytes) throw new Error("object response size mismatch");
+      const data = Buffer.concat(chunks);
+      if (`sha256:${createHash("sha256").update(data).digest("hex")}` !== ticket.sha256) {
+        throw new Error("object transfer digest mismatch");
+      }
+      return { data, sha256: ticket.sha256 };
+    }
     const response = await this.signedFetch(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/chunks/${index}`,
-      { method: "GET", timeoutMs: 120_000 }
+      { method: "GET", timeoutMs: 120_000, signal }
     );
     if (!response.ok) {
       await this.parseSignedResponse(response);
@@ -244,20 +335,27 @@ export class NodeApiClient {
     };
   }
 
-  async finalizeTransferSource(transferId: string, contentSha256: string): Promise<any> {
+  async finalizeTransferSource(
+    transferId: string,
+    contentSha256: string,
+    signal?: AbortSignal
+  ): Promise<any> {
     return this.signedRequest(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/finalize-source`,
-      { contentSha256 }
+      { contentSha256 },
+      signal
     );
   }
 
   async updateTransferProgress(
     transferId: string,
-    input: { bytesTransferred: number; status: "transferring" | "verifying" }
+    input: { bytesTransferred: number; status: "transferring" | "verifying" },
+    signal?: AbortSignal
   ): Promise<any> {
     return this.signedRequest(
       `/api/v1/nodes/${encodeURIComponent(this.nodeId!)}/transfers/${encodeURIComponent(transferId)}/progress`,
-      input
+      input,
+      signal
     );
   }
 
@@ -273,4 +371,28 @@ export class NodeApiClient {
       ...(input.result.receipt ? { receipt: input.result.receipt } : {})
     });
   }
+}
+
+function validateTransferTicket(ticket: any): void {
+  const url = new URL(ticket.url);
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("object transfer ticket must use HTTPS");
+  }
+  if (!ticket.headers || typeof ticket.headers !== "object" || Array.isArray(ticket.headers)) {
+    throw new Error("invalid object transfer headers");
+  }
+  if (
+    !Number.isFinite(Date.parse(ticket.expiresAt)) ||
+    Date.parse(ticket.expiresAt) <= Date.now()
+  ) {
+    throw new Error("object transfer ticket expired");
+  }
+  if (Object.keys(ticket.headers).some((name) => /^(authorization|cookie|x-adc-)/i.test(name))) {
+    throw new Error("object transfer ticket contains control-plane credentials");
+  }
+}
+
+function transferSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
 }

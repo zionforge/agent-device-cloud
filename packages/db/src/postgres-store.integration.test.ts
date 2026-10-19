@@ -52,6 +52,64 @@ describe("PostgresStore", () => {
   let embedded: PostgresMemoryServer | undefined;
   let databaseUrl: string;
 
+  it("persists Agent upload metadata, its single destination and cleanup checkpoint", async () => {
+    const base = dispatch(99);
+    const invocation = InvocationSchema.parse({
+      ...base.invocation,
+      tool: "file.transfer",
+      idempotencyKey: "pg-agent-upload",
+      args: {
+        source: {
+          kind: "agent",
+          path: "source.bin",
+          byteSize: 23,
+          contentSha256: `sha256:${"b".repeat(64)}`
+        },
+        destination: { nodeId: "node_postgres", rootId: "root_workspace", path: "target.bin" }
+      }
+    });
+    const child = { ...base, invocation };
+    const transfer: TransferRecord = {
+      transferId: "xfr_pg_agent",
+      invocation,
+      args: FileTransferArgsSchema.parse(invocation.args),
+      status: "queued",
+      bytesTransferred: 0,
+      byteSize: 23,
+      chunkCount: 1,
+      contentSha256: `sha256:${"b".repeat(64)}`,
+      createdAt: base.createdAt,
+      updatedAt: base.updatedAt
+    };
+    const persisted = await store.createTransfer(
+      transfer,
+      [child],
+      [
+        {
+          eventId: createId("dsp"),
+          accountId: "acct_primary",
+          type: "dispatch.queued",
+          payload: {},
+          createdAt: base.createdAt
+        }
+      ]
+    );
+    expect(persisted).toMatchObject({
+      byteSize: 23,
+      chunkCount: 1,
+      contentSha256: transfer.contentSha256,
+      destinationDispatchId: child.dispatchId
+    });
+    expect(persisted.sourceDispatchId).toBeUndefined();
+    const future = new Date(Date.now() + 2 * 60 * 60_000);
+    expect(await store.listTransferCleanupCandidates(future, 100)).toContain(transfer.transferId);
+    await store.markTransferCleaned(transfer.transferId);
+    expect(await store.listTransferCleanupCandidates(future, 100)).not.toContain(
+      transfer.transferId
+    );
+    await store.requestCancelTransfer(transfer.transferId, new Date());
+  });
+
   beforeAll(async () => {
     databaseUrl =
       process.env.ADC_TEST_DATABASE_URL ??
@@ -121,6 +179,57 @@ describe("PostgresStore", () => {
   afterAll(async () => {
     await store.close();
     await embedded?.stop();
+  });
+
+  it("admits only eight concurrent account transfers and releases cancelled slots", async () => {
+    const transfers = Array.from({ length: 12 }, (_, index): TransferRecord => {
+      const base = dispatch(200 + index);
+      const invocation = InvocationSchema.parse({
+        ...base.invocation,
+        tool: "file.transfer",
+        idempotencyKey: `quota-transfer-${index}`,
+        args: {
+          source: {
+            kind: "agent",
+            path: "source.bin",
+            byteSize: 1,
+            contentSha256: `sha256:${"b".repeat(64)}`
+          },
+          destination: { nodeId: "node_postgres", rootId: "root_workspace", path: `quota-${index}` }
+        }
+      });
+      return {
+        transferId: createId("xfr"),
+        invocation,
+        args: FileTransferArgsSchema.parse(invocation.args),
+        status: "queued",
+        bytesTransferred: 0,
+        createdAt: base.createdAt,
+        updatedAt: base.updatedAt
+      };
+    });
+    const admitted = await Promise.allSettled(
+      transfers.map((transfer) => store.createTransfer(transfer, [], []))
+    );
+    const accepted = admitted.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : []
+    );
+    expect(accepted).toHaveLength(8);
+    for (const result of admitted) {
+      if (result.status === "rejected") {
+        expect(result.reason).toMatchObject({ code: "conflict", retryable: true });
+      }
+    }
+    expect(await store.createTransfer(accepted[0]!, [], [])).toMatchObject({
+      transferId: accepted[0]!.transferId
+    });
+    for (const transfer of accepted) {
+      await store.requestCancelTransfer(transfer.transferId, new Date());
+    }
+    expect(await store.createTransfer(transfers[11]!, [], [])).toMatchObject({
+      transferId: transfers[11]!.transferId
+    });
+    await store.requestCancelTransfer(transfers[11]!.transferId, new Date());
   });
 
   it("stores Windows nodes after the platform constraint migration", async () => {
@@ -439,6 +548,7 @@ describe("PostgresStore", () => {
     });
     const child = (role: "source" | "destination"): DispatchRecord => {
       const endpoint = FileTransferArgsSchema.parse(parent.args)[role];
+      if (!("nodeId" in endpoint)) throw new Error("fixture requires a Node endpoint");
       return {
         dispatchId: createId("dsp"),
         invocation: InvocationSchema.parse({

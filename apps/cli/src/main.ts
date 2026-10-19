@@ -17,6 +17,7 @@ import {
   signOut
 } from "./auth.ts";
 import { isManagementCommand, managementUsage, runManagementCommand } from "./management.ts";
+import { uploadFile } from "./transfer-upload.ts";
 import {
   UPDATE_NOTICE_COMMAND,
   cachedUpdateNotice,
@@ -45,6 +46,8 @@ Usage:
                       --destination-node NODE --destination-root ROOT --destination-path PATH
                       --idempotency-key KEY [--chunk-size BYTES] [--wait MILLISECONDS]
   adc transfer status|wait|cancel TRANSFER [--wait MILLISECONDS]
+  adc transfer upload --file PATH --destination-node NODE --destination-root ROOT
+                      --destination-path PATH --idempotency-key KEY
   adc artifact get ID
   adc audit show|list
   adc mcp
@@ -251,6 +254,31 @@ async function main(): Promise<void> {
   }
   if (domain === "node" && action === "pairing-code") {
     print(await client.createPairingCode(Number(stringFlag(flags, "ttl") ?? 600)), json);
+    return;
+  }
+  if (domain === "transfer" && action === "upload") {
+    const result = await uploadFile(client, {
+      path: requiredFlag(flags, "file"),
+      destination: {
+        nodeId: requiredFlag(flags, "destination-node"),
+        rootId: requiredFlag(flags, "destination-root"),
+        path: requiredFlag(flags, "destination-path")
+      },
+      idempotencyKey: requiredFlag(flags, "idempotency-key"),
+      ...(stringFlag(flags, "chunk-size")
+        ? { chunkSizeBytes: Number(stringFlag(flags, "chunk-size")) }
+        : {}),
+      ...(stringFlag(flags, "execution-timeout")
+        ? { executionTimeoutMs: Number(stringFlag(flags, "execution-timeout")) }
+        : {})
+    });
+    const waitMs = Number(stringFlag(flags, "wait") ?? 0);
+    const final =
+      result.jobId && waitMs && ["queued", "running"].includes(result.status)
+        ? await client.taskWait(result.jobId, waitMs)
+        : result;
+    print(final, json);
+    process.exitCode = exitCode(final);
     return;
   }
   if (domain === "transfer" && action === "create") {

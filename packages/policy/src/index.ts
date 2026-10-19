@@ -129,7 +129,7 @@ function invocationRoot(
   if (!isBuiltinTool(invocation.tool)) return undefined;
   if (invocation.tool === "file.transfer" && "nodeId" in invocation.target) {
     const transfer = FileTransferArgsSchema.parse(invocation.args);
-    if (transfer.source.nodeId === invocation.target.nodeId) {
+    if ("nodeId" in transfer.source && transfer.source.nodeId === invocation.target.nodeId) {
       return { rootId: transfer.source.rootId, requiresWrite: false };
     }
     if (transfer.destination.nodeId === invocation.target.nodeId) {

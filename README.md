@@ -423,11 +423,12 @@ path calls remain accepted during migration. Node receipts survive restarts; unc
 return `unknown_outcome`. Processes stop on cancellation, timeout or lease expiry. Long output uses
 authenticated artifacts.
 
-Native `file.transfer` jobs copy one regular file between two authorized desktop Nodes through the
-Control Plane's local persistent relay. They do not require TOS, S3 or direct Node connectivity.
-Configure and monitor `ADC_TRANSFER_DIR`; the default is `./data/transfers`, and the default
-per-transfer limit is 100 GiB. Version 0.1 never overwrites a destination and does not copy
-directories. See [native node-to-node transfer](docs/native-node-transfer.md).
+`file.transfer` copies a regular file between devices or from an Agent to one device. Production
+uses private OSS with short-lived direct-upload/download tickets; file bytes bypass ADC.
+Select `ADC_TRANSFER_BACKEND=oss` and configure the private bucket. Transfers default to disabled,
+with a 1 GiB file limit and eight active transfers per account. Explicit `local` relay remains
+available for small self-hosted installations. Destinations are verified and never overwritten.
+See [file transfer](docs/native-node-transfer.md).
 
 `restricted-process` executes with the Node OS user's authority. Its command classifier and output
 redaction are guardrails; arbitrary code can access host files and networking. Node's portable path

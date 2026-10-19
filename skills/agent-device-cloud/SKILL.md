@@ -1,7 +1,7 @@
 ---
 name: agent-device-cloud
 description: Set up and operate Agent Device Cloud through public CLIs. Use when asked to get started with ADC, connect devices, manage access, invoke device tools, or track tasks.
-version: 0.3.0
+version: 0.4.0
 requirements:
   cli: "adc >=0.1.0 <0.2.0"
   protocol: "0.1"
@@ -50,6 +50,13 @@ scoped connection and a read-only tool result before reporting that ADC is ready
    capability error.
 
 Read [tool-invocation.md](references/tool-invocation.md) before invoking a device tool.
+
+For a file held locally by this Agent, use `adc transfer upload --file <local-path>
+--destination-node <node-id> --destination-root <root-id> --destination-path <relative-path>
+--idempotency-key <key> --json`. No source Node is needed. File bytes go directly to private
+object storage; never put binary/base64 payloads in invocation arguments. If approval is required,
+wait for the user's decision, then repeat the exact upload command and key to continue the same
+transfer. Do not upload until the task is approved. Use normal task waiting to verify completion.
 
 ## Execute Deliberately
 

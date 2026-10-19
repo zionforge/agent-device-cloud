@@ -46,7 +46,12 @@ services:
       ADC_ANDROID_RELEASE_DIR: /var/lib/agent-device-cloud/android-releases
       ADC_ASSET_DIR: /var/lib/agent-device-cloud/assets
       ADC_TRANSFER_DIR: /var/lib/agent-device-cloud/transfers
-      ADC_TRANSFER_MAX_BYTES: ${ADC_TRANSFER_MAX_BYTES:-107374182400}
+      ADC_TRANSFER_BACKEND: ${ADC_TRANSFER_BACKEND:-disabled}
+      ADC_TRANSFER_MAX_BYTES: ${ADC_TRANSFER_MAX_BYTES:-1073741824}
+      ADC_TRANSFER_OSS_REGION: ${ADC_TRANSFER_OSS_REGION:-}
+      ADC_TRANSFER_OSS_BUCKET: ${ADC_TRANSFER_OSS_BUCKET:-}
+      ADC_TRANSFER_OSS_ACCESS_KEY_ID: ${ADC_TRANSFER_OSS_ACCESS_KEY_ID:-}
+      ADC_TRANSFER_OSS_ACCESS_KEY_SECRET: ${ADC_TRANSFER_OSS_ACCESS_KEY_SECRET:-}
       DATABASE_URL: postgresql://adc:${ADC_DATABASE_PASSWORD}@postgres:5432/adc
     volumes:
       - adc-assets:/var/lib/agent-device-cloud/assets

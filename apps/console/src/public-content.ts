@@ -37,6 +37,59 @@ export function localize(value: LocalizedText, locale: Locale): string {
 
 export const publicContent: PublicContentEntry[] = [
   {
+    path: "/updates/connector-0-1-4",
+    kind: "Product update",
+    title: text("Connector 0.1.4: direct file transfers", "Connector 0.1.4：文件直传"),
+    summary: text(
+      "Copy files between devices or upload from an Agent through private object storage.",
+      "通过私有对象存储在设备间复制文件，或从 Agent 上传到设备。"
+    ),
+    publishedAt: "2026-10-19",
+    updatedAt: "2026-10-19",
+    readingMinutes: 2,
+    keywords: ["ADC file.transfer", "Agent upload", "private object storage"],
+    listed: true,
+    relatedPaths: ["/updates/connector-0-1-3", "/guides/first-device-to-first-tool-call"],
+    sections: [
+      {
+        id: "transfer",
+        title: text("Transfer files with scoped authorization", "在授权范围内传输文件"),
+        paragraphs: [
+          text(
+            "Connector 0.1.4 supports private object storage for file.transfer. Your administrator must enable the backend and both participating Connectors must be updated. ADC handles authorization, approval and task state; file bytes travel directly through storage.",
+            "Connector 0.1.4 为 file.transfer 增加私有对象存储支持。管理员需启用后端，参与传输的 Connector 均需更新。ADC 处理授权、审批和任务状态，文件字节直接通过对象存储传输。"
+          ),
+          text(
+            "adc transfer upload sends a local Agent file to an authorized device without registering a source Node. The destination verifies the file and commits it without overwriting an existing path. Keep the same arguments and idempotency key when resuming after approval.",
+            "adc transfer upload 可将 Agent 本地文件上传至已授权设备，无需注册源 Node。目标校验文件后落盘，保留已有同名文件。审批后继续上传时，保持相同参数与幂等键。"
+          )
+        ],
+        code: "adc update\nadc transfer upload --help"
+      },
+      {
+        id: "wait",
+        title: text("Follow the existing task", "跟踪已有任务"),
+        paragraphs: [
+          text(
+            "An upload response contains the existing jobId. Use task.wait to follow the destination result. Upload completion alone does not mean the destination has committed the file.",
+            "上传响应包含已有 jobId，使用 task.wait 跟踪目标结果。上传结束时，目标可能尚未完成文件落盘。"
+          )
+        ],
+        code: `adc invoke task.wait --args '{"jobId":"job_example","waitMs":4000}' --json`
+      },
+      {
+        id: "permissions",
+        title: text("Check destination access", "检查目标权限"),
+        paragraphs: [
+          text(
+            "Grant file.transfer and access to the destination folder. Device-to-device copies also require source access. Owner approval applies before transfer starts, and cancellation stops pending storage requests.",
+            "授权需包含 file.transfer 和目标目录权限。设备间复制还需源目录权限。需要审批的传输在审批后开始，取消会停止待处理的存储请求。"
+          )
+        ]
+      }
+    ]
+  },
+  {
     path: "/updates/connector-0-1-3",
     kind: "Product update",
     title: text(

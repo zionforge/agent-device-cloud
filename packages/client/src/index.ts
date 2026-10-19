@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   ControlPlaneTools,
   ErrorSchema,
@@ -252,7 +253,13 @@ export function buildInvocation(input: {
   const absolutePath = absolutePathForToolArgs(tool, args);
   const transferTarget =
     tool === "file.transfer"
-      ? { nodeId: FileTransferArgsSchema.parse(input.args).source.nodeId }
+      ? (() => {
+          const transfer = FileTransferArgsSchema.parse(input.args);
+          return {
+            nodeId:
+              "nodeId" in transfer.source ? transfer.source.nodeId : transfer.destination.nodeId
+          };
+        })()
       : undefined;
   const target =
     input.target ??
@@ -285,10 +292,12 @@ export function buildInvocation(input: {
       ? [legacyRootId]
       : input.context.rootIds
     : tool === "file.transfer"
-      ? [
-          FileTransferArgsSchema.parse(input.args).source.rootId,
-          FileTransferArgsSchema.parse(input.args).destination.rootId
-        ]
+      ? (() => {
+          const transfer = FileTransferArgsSchema.parse(input.args);
+          return "rootId" in transfer.source
+            ? [transfer.source.rootId, transfer.destination.rootId]
+            : [transfer.destination.rootId];
+        })()
       : absoluteRoot
         ? [absoluteRoot.rootId]
         : input.context.rootAccess === "all"
@@ -375,6 +384,78 @@ export class AdcClient {
       );
     }
     return body;
+  }
+
+  /** Upload a bounded chunk directly; the ADC credential is only used to obtain its ticket. */
+  async uploadTransferChunk(
+    transferId: string,
+    index: number,
+    data: Buffer,
+    signal?: AbortSignal
+  ): Promise<void> {
+    if (
+      !Number.isSafeInteger(index) ||
+      index < 0 ||
+      data.length < 1 ||
+      data.length > 32 * 1024 * 1024
+    ) {
+      throw new Error("invalid transfer chunk");
+    }
+    const path = `/api/v1/transfers/${encodeURIComponent(transferId)}/chunks/${index}/ticket`;
+    const body = JSON.stringify({
+      sha256: `sha256:${createHash("sha256").update(data).digest("hex")}`,
+      contentMd5: createHash("md5").update(data).digest("base64")
+    });
+    const timeout = AbortSignal.timeout(120_000);
+    const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    const ticket = (await this.request(path, {
+      method: "POST",
+      body,
+      signal: requestSignal,
+      redirect: "error"
+    })) as any;
+    if (ticket?.alreadyUploaded === true) return;
+    if (!ticket || typeof ticket.url !== "string") {
+      throw new Error("invalid direct upload ticket");
+    }
+    const url = new URL(ticket.url);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      !ticket.headers ||
+      typeof ticket.headers !== "object" ||
+      Array.isArray(ticket.headers) ||
+      Object.values(ticket.headers).some((value) => typeof value !== "string") ||
+      Object.keys(ticket.headers).some((name) => /^(authorization|cookie|x-adc-)/i.test(name)) ||
+      !Number.isFinite(Date.parse(ticket.expiresAt)) ||
+      Date.parse(ticket.expiresAt) <= Date.now()
+    ) {
+      throw new Error("invalid direct upload ticket");
+    }
+    const response = await this.fetcher(ticket.url, {
+      method: "PUT",
+      headers: ticket.headers,
+      body: data as BodyInit,
+      signal: requestSignal,
+      redirect: "error"
+    });
+    if (response.status === 409) {
+      const retry = (await this.request(path, {
+        method: "POST",
+        body,
+        signal: requestSignal,
+        redirect: "error"
+      })) as any;
+      if (retry?.alreadyUploaded === true) return;
+    }
+    if (!response.ok) {
+      throw new AdcClientError(response.status, {
+        code: "execution_failed",
+        message: `object upload returned HTTP ${response.status}`,
+        retryable: response.status >= 500
+      });
+    }
   }
 
   async me(): Promise<

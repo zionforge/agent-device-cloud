@@ -293,6 +293,11 @@ export interface Store {
   ): Promise<TransferRecord | undefined>;
   getTransferById(transferId: string): Promise<TransferRecord | undefined>;
   getTransferByInvocation(invocationId: string): Promise<TransferRecord | undefined>;
+  getTransferByIdempotency(
+    accountId: string,
+    actorId: string,
+    key: string
+  ): Promise<TransferRecord | undefined>;
   getTransferByDispatch(dispatchId: string): Promise<TransferRecord | undefined>;
   prepareTransfer(
     transferId: string,
@@ -313,6 +318,8 @@ export interface Store {
   reconcileTransfer(dispatchId: string, now: Date): Promise<TransferRecord | undefined>;
   requestCancelTransfer(transferId: string, now: Date): Promise<TransferRecord | undefined>;
   denyTransfer(transferId: string, now: Date): Promise<TransferRecord | undefined>;
+  listTransferCleanupCandidates(before: Date, limit: number): Promise<string[]>;
+  markTransferCleaned(transferId: string): Promise<void>;
   enqueue(dispatch: DispatchRecord, audit: AuditEvent): Promise<DispatchRecord>;
   claim(nodeId: string, now: Date, leaseMs: number): Promise<DispatchRecord | undefined>;
   acknowledge(

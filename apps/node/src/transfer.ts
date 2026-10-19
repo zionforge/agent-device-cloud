@@ -110,7 +110,7 @@ export class NodeTransferRuntime {
     let error: ProtocolError | undefined;
     try {
       assertCurrent(invocation, this.now());
-      const source = args.source.nodeId === this.nodeId;
+      const source = "nodeId" in args.source && args.source.nodeId === this.nodeId;
       const destination = args.destination.nodeId === this.nodeId;
       if (source === destination) {
         throw new ProtocolError(
@@ -183,6 +183,13 @@ export class NodeTransferRuntime {
     roots: LocalRoot[],
     signal?: AbortSignal
   ): Promise<unknown> {
+    if (!("nodeId" in args.source)) {
+      throw new ProtocolError(
+        ErrorCodes.INVALID_REQUEST,
+        "Agent source cannot run on a Node",
+        false
+      );
+    }
     const root = requiredRoot(roots, args.source.rootId);
     const target = await resolveResourcePath(root, args.source.path, "read");
     const handle = await open(
@@ -206,7 +213,7 @@ export class NodeTransferRuntime {
         throw new ProtocolError(ErrorCodes.CONFLICT, "transfer source changed", true);
       }
       const chunkCount = Math.ceil(initial.size / args.chunkSizeBytes);
-      await this.api.prepareTransfer(transferId, { byteSize: initial.size, chunkCount });
+      await this.api.prepareTransfer(transferId, { byteSize: initial.size, chunkCount }, signal);
       const contentHash = createHash("sha256");
       for (let index = 0; index < chunkCount; index++) {
         throwIfAborted(signal);
@@ -227,7 +234,7 @@ export class NodeTransferRuntime {
         }
         contentHash.update(chunk);
         const chunkSha256 = sha256Bytes(chunk);
-        await this.api.uploadTransferChunk(transferId, index, chunk, chunkSha256);
+        await this.api.uploadTransferChunk(transferId, index, chunk, chunkSha256, signal);
       }
       const final = await handle.stat();
       if (
@@ -238,7 +245,7 @@ export class NodeTransferRuntime {
         throw new ProtocolError(ErrorCodes.CONFLICT, "transfer source changed during upload", true);
       }
       const contentSha256 = `sha256:${contentHash.digest("hex")}`;
-      await this.api.finalizeTransferSource(transferId, contentSha256);
+      await this.api.finalizeTransferSource(transferId, contentSha256, signal);
       return { transferId, byteSize: initial.size, chunkCount, contentSha256, role: "source" };
     } finally {
       await handle.close();
@@ -358,19 +365,27 @@ export class NodeTransferRuntime {
         ledger.completedChunks = index + 1;
         ledger.completedBytes += chunk.data.length;
         await writeLedger(ledgerPath, ledger);
-        await this.api.updateTransferProgress(transferId, {
-          bytesTransferred: ledger.completedBytes,
-          status: "transferring"
-        });
+        await this.api.updateTransferProgress(
+          transferId,
+          {
+            bytesTransferred: ledger.completedBytes,
+            status: "transferring"
+          },
+          signal
+        );
       }
       await handle.sync();
     } finally {
       await handle.close();
     }
-    await this.api.updateTransferProgress(transferId, {
-      bytesTransferred: ledger.completedBytes,
-      status: "verifying"
-    });
+    await this.api.updateTransferProgress(
+      transferId,
+      {
+        bytesTransferred: ledger.completedBytes,
+        status: "verifying"
+      },
+      signal
+    );
     const finalMetadata = await this.waitForFinalDigest(transferId, signal);
     const actual = await sha256File(temporary);
     if (ledger.completedBytes !== metadata.byteSize || actual !== finalMetadata.contentSha256) {
@@ -493,7 +508,7 @@ export class NodeTransferRuntime {
   ): Promise<{ byteSize: number; chunkCount: number }> {
     for (;;) {
       throwIfAborted(signal);
-      const metadata = await this.api.transferMetadata(transferId);
+      const metadata = await this.api.transferMetadata(transferId, signal);
       if (
         Number.isSafeInteger(metadata.byteSize) &&
         metadata.byteSize >= 0 &&
@@ -517,7 +532,7 @@ export class NodeTransferRuntime {
   ): Promise<{ contentSha256: `sha256:${string}` }> {
     for (;;) {
       throwIfAborted(signal);
-      const metadata = await this.api.transferMetadata(transferId);
+      const metadata = await this.api.transferMetadata(transferId, signal);
       if (
         typeof metadata.contentSha256 === "string" &&
         /^sha256:[a-f0-9]{64}$/.test(metadata.contentSha256)
@@ -537,12 +552,12 @@ export class NodeTransferRuntime {
     for (;;) {
       throwIfAborted(signal);
       try {
-        return await this.api.downloadTransferChunk(transferId, index);
+        return await this.api.downloadTransferChunk(transferId, index, signal);
       } catch (error) {
         if (!(error instanceof AdcClientError) || error.error.code !== ErrorCodes.NOT_FOUND) {
           throw error;
         }
-        assertTransferPending(await this.api.transferMetadata(transferId));
+        assertTransferPending(await this.api.transferMetadata(transferId, signal));
       }
       await delay(150, signal);
     }

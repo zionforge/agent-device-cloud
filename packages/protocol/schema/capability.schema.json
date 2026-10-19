@@ -70,6 +70,16 @@
       "minLength": 1,
       "maxLength": 64
     },
+    "transferDataPlanes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "local",
+          "object"
+        ]
+      }
+    },
     "buildId": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$"

@@ -74,7 +74,7 @@ CLI calls use `--wait 4000`; SDK calls use `client.invoke(invocation, { waitMs: 
 Waiting returns a terminal result or the current task state without cancelling or restarting it.
 Continue with `task.wait`, `adc task wait JOB --wait 4000 --json`, or `client.taskWait(jobId)`.
 
-`file.transfer` is a first-class two-device job. Both devices and both roots must be present in the
+`file.transfer` supports a two-device job or a local Agent upload to one device. For two devices, both devices and both roots must be present in the
 current authorization; the source root may be read-only and the destination root must be writable.
 Use `adc transfer create` for its dedicated CLI, then `adc transfer status|wait|cancel` with the
 returned `transferId` or `jobId`. Protocol 0.1 transfers one regular file, never overwrites an

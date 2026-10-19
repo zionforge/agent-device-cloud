@@ -208,6 +208,7 @@ export class NodeDaemon {
       })),
       platform,
       nodeVersion: this.options.nodeVersion ?? "0.1.0",
+      transferDataPlanes: ["local", "object"],
       ...(this.options.buildId ? { buildId: this.options.buildId } : {}),
       advertisedAt: now.toISOString()
     });
@@ -338,7 +339,7 @@ export class NodeDaemon {
       (dispatch.invocation.tool === "file.transfer"
         ? (() => {
             const transfer = FileTransferArgsSchema.parse(dispatch.invocation.args);
-            return transfer.source.nodeId === this.options.nodeId
+            return "nodeId" in transfer.source && transfer.source.nodeId === this.options.nodeId
               ? transfer.source.rootId
               : transfer.destination.rootId;
           })()

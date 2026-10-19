@@ -801,11 +801,35 @@ export class PostgresStore implements Store {
   ): Promise<TransferRecord> {
     return transaction(this.pool, async (client) => {
       const invocation = transfer.invocation;
+      // Serialize admission per account across replicas; retries do not consume a new slot.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [
+        invocation.accountId
+      ]);
+      const active = await client.query(
+        `SELECT count(*)::int AS count FROM adc_transfers
+         WHERE account_id = $1 AND status IN ('awaiting_approval', 'queued', 'transferring', 'verifying')
+           AND (invocation->>'expiresAt')::timestamptz > NOW()
+           AND NOT (invocation_id = $2 OR (actor_id = $3 AND idempotency_key = $4))`,
+        [
+          invocation.accountId,
+          invocation.invocationId,
+          invocation.actor.id,
+          invocation.idempotencyKey ?? ""
+        ]
+      );
+      if (active.rows[0]!.count >= 8) {
+        throw new ProtocolError(
+          ErrorCodes.CONFLICT,
+          "account transfer concurrency limit reached",
+          true
+        );
+      }
       const inserted = await client.query(
         `INSERT INTO adc_transfers
          (transfer_id, invocation_id, account_id, actor_id, grant_id, idempotency_key,
-          input_hash, invocation, args, status, bytes_transferred, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          input_hash, invocation, args, status, bytes_transferred, created_at, updated_at,
+          byte_size, chunk_count, content_sha256)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          ON CONFLICT DO NOTHING RETURNING *`,
         [
           transfer.transferId,
@@ -820,7 +844,10 @@ export class PostgresStore implements Store {
           transfer.status,
           transfer.bytesTransferred,
           transfer.createdAt,
-          transfer.updatedAt
+          transfer.updatedAt,
+          transfer.byteSize ?? null,
+          transfer.chunkCount ?? null,
+          transfer.contentSha256 ?? null
         ]
       );
       if (!inserted.rowCount) {
@@ -844,12 +871,16 @@ export class PostgresStore implements Store {
         await insertDispatch(client, dispatch, audits[index]!);
       }
       const updated =
-        dispatches.length === 2
+        dispatches.length > 0
           ? await client.query(
               `UPDATE adc_transfers
                SET source_dispatch_id = $2, destination_dispatch_id = $3
                WHERE transfer_id = $1 RETURNING *`,
-              [transfer.transferId, dispatches[0]!.dispatchId, dispatches[1]!.dispatchId]
+              [
+                transfer.transferId,
+                "nodeId" in transfer.args.source ? dispatches[0]!.dispatchId : null,
+                dispatches.at(-1)!.dispatchId
+              ]
             )
           : inserted;
       return transferFromRow(updated.rows[0]!);
@@ -908,7 +939,12 @@ export class PostgresStore implements Store {
          SET status = 'queued', source_dispatch_id = $2, destination_dispatch_id = $3,
              updated_at = $4
          WHERE transfer_id = $1 RETURNING *`,
-        [transferId, dispatches[0]!.dispatchId, dispatches[1]!.dispatchId, now.toISOString()]
+        [
+          transferId,
+          "nodeId" in transfer.args.source ? dispatches[0]!.dispatchId : null,
+          dispatches.at(-1)!.dispatchId,
+          now.toISOString()
+        ]
       );
       return transferFromRow(updated.rows[0]!);
     });
@@ -935,6 +971,37 @@ export class PostgresStore implements Store {
       [dispatchId]
     );
     return result.rows[0] ? transferFromRow(result.rows[0]) : undefined;
+  }
+
+  async getTransferByIdempotency(
+    accountId: string,
+    actorId: string,
+    key: string
+  ): Promise<TransferRecord | undefined> {
+    const result = await this.pool.query(
+      "SELECT * FROM adc_transfers WHERE account_id = $1 AND actor_id = $2 AND idempotency_key = $3",
+      [accountId, actorId, key]
+    );
+    return result.rows[0] ? transferFromRow(result.rows[0]) : undefined;
+  }
+
+  async listTransferCleanupCandidates(before: Date, limit: number): Promise<string[]> {
+    const result = await this.pool.query(
+      `SELECT transfer_id FROM adc_transfers
+       WHERE storage_cleaned_at IS NULL AND CASE WHEN status IN ('succeeded', 'failed', 'denied', 'cancelled', 'unknown_outcome')
+                  THEN COALESCE(completed_at, updated_at)
+                  ELSE (invocation->>'expiresAt')::timestamptz END <= $1
+       ORDER BY updated_at LIMIT $2`,
+      [before.toISOString(), limit]
+    );
+    return result.rows.map((row) => row.transfer_id as string);
+  }
+
+  async markTransferCleaned(transferId: string): Promise<void> {
+    await this.pool.query(
+      "UPDATE adc_transfers SET storage_cleaned_at = NOW() WHERE transfer_id = $1",
+      [transferId]
+    );
   }
 
   async prepareTransfer(

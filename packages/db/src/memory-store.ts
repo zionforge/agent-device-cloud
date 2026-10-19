@@ -69,6 +69,7 @@ export class MemoryStore implements Store {
   private readonly dispatchByInvocation = new Map<string, string>();
   private readonly dispatchByIdempotency = new Map<string, string>();
   private readonly transfers = new Map<string, TransferRecord>();
+  private readonly cleanedTransfers = new Set<string>();
   private readonly transferByInvocation = new Map<string, string>();
   private readonly transferByIdempotency = new Map<string, string>();
   private readonly audit: AuditEvent[] = [];
@@ -557,7 +558,25 @@ export class MemoryStore implements Store {
         assertSameInvocation(existing.invocation, transfer.invocation);
         return clone(existing);
       }
-      this.transferByIdempotency.set(key, transfer.transferId);
+    }
+    const active = [...this.transfers.values()].filter(
+      (item) =>
+        item.invocation.accountId === transfer.invocation.accountId &&
+        !terminalStatuses.has(item.status) &&
+        Date.parse(item.invocation.expiresAt) > Date.now()
+    );
+    if (active.length >= 8) {
+      throw new ProtocolError(
+        ErrorCodes.CONFLICT,
+        "account transfer concurrency limit reached",
+        true
+      );
+    }
+    if (idempotencyKey) {
+      this.transferByIdempotency.set(
+        `${transfer.invocation.accountId}:${transfer.invocation.actor.id}:${idempotencyKey}`,
+        transfer.transferId
+      );
     }
     this.transfers.set(transfer.transferId, clone(transfer));
     this.transferByInvocation.set(transfer.invocation.invocationId, transfer.transferId);
@@ -590,8 +609,8 @@ export class MemoryStore implements Store {
       for (const [index, dispatch] of dispatches.entries()) {
         await this.enqueue(dispatch, audits[index]!);
       }
-      transfer.sourceDispatchId = dispatches[0]!.dispatchId;
-      transfer.destinationDispatchId = dispatches[1]!.dispatchId;
+      if ("nodeId" in transfer.args.source) transfer.sourceDispatchId = dispatches[0]!.dispatchId;
+      transfer.destinationDispatchId = dispatches.at(-1)!.dispatchId;
       transfer.status = "queued";
       transfer.updatedAt = now.toISOString();
       approval.resolvedAt = now.toISOString();
@@ -628,6 +647,15 @@ export class MemoryStore implements Store {
     return transfer ? clone(transfer) : undefined;
   }
 
+  async getTransferByIdempotency(
+    accountId: string,
+    actorId: string,
+    key: string
+  ): Promise<TransferRecord | undefined> {
+    const id = this.transferByIdempotency.get(`${accountId}:${actorId}:${key}`);
+    return id ? this.getTransferById(id) : undefined;
+  }
+
   async prepareTransfer(
     transferId: string,
     sourceNodeId: string,
@@ -636,6 +664,7 @@ export class MemoryStore implements Store {
     const transfer = this.transfers.get(transferId);
     if (
       !transfer ||
+      !("nodeId" in transfer.args.source) ||
       transfer.args.source.nodeId !== sourceNodeId ||
       !["queued", "transferring", "verifying"].includes(transfer.status)
     )
@@ -661,6 +690,7 @@ export class MemoryStore implements Store {
     const transfer = this.transfers.get(transferId);
     if (
       !transfer ||
+      !("nodeId" in transfer.args.source) ||
       transfer.args.source.nodeId !== sourceNodeId ||
       !["transferring", "verifying"].includes(transfer.status)
     )
@@ -742,6 +772,24 @@ export class MemoryStore implements Store {
     }
     transfer.updatedAt = now.toISOString();
     return clone(transfer);
+  }
+
+  async listTransferCleanupCandidates(before: Date, limit: number): Promise<string[]> {
+    return [...this.transfers.values()]
+      .filter(
+        (transfer) =>
+          !this.cleanedTransfers.has(transfer.transferId) &&
+          (terminalStatuses.has(transfer.status)
+            ? Date.parse(transfer.completedAt ?? transfer.updatedAt)
+            : Date.parse(transfer.invocation.expiresAt)) <= before.getTime()
+      )
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit)
+      .map((transfer) => transfer.transferId);
+  }
+
+  async markTransferCleaned(transferId: string): Promise<void> {
+    this.cleanedTransfers.add(transferId);
   }
 
   async denyTransfer(transferId: string, now: Date): Promise<TransferRecord | undefined> {
